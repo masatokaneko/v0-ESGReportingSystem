@@ -1,122 +1,98 @@
 import { createClient } from "@supabase/supabase-js"
+import type { Database } from "@/types/supabase"
 
-// 環境変数からSupabaseの接続情報を取得
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+// 環境変数が設定されているかどうかを確認する変数
+let isInitialized = false
 
-// 環境変数のチェック（警告のみ、エラーは投げない）
-if (!supabaseUrl) {
-  console.warn("Warning: Missing environment variable NEXT_PUBLIC_SUPABASE_URL")
-}
+// サーバーサイドのSupabaseクライアント（サービスロールキーを使用）
+let supabaseServerInstance: ReturnType<typeof createClient<Database>> | null = null
 
-if (!supabaseAnonKey) {
-  console.warn("Warning: Missing environment variable NEXT_PUBLIC_SUPABASE_ANON_KEY")
-}
+// サーバーサイドのSupabaseクライアントを取得する関数
+export function getSupabaseServer() {
+  if (!supabaseServerInstance) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-if (!supabaseServiceRoleKey) {
-  console.warn("Warning: Missing environment variable SUPABASE_SERVICE_ROLE_KEY")
-}
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Supabase URL or Service Role Key is missing. Please check your environment variables.")
+    }
 
-// サーバーサイドで使用するクライアント（サービスロールキーを使用）
-export const supabaseServer =
-  supabaseUrl && supabaseServiceRoleKey
-    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false,
-        },
-        db: {
-          schema: "public",
-        },
-        global: {
-          headers: {
-            "x-application-name": "esg-reporting-system",
-          },
-        },
-      })
-    : null
-
-// クライアントサイドで使用するクライアント（シングルトンパターン）
-let supabaseClientInstance: ReturnType<typeof createClient> | null = null
-
-export const createSupabaseClient = () => {
-  if (typeof window === "undefined") {
-    throw new Error("createSupabaseClient should only be called in client components")
+    supabaseServerInstance = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+    isInitialized = true
   }
+  return supabaseServerInstance
+}
+
+// サーバーサイドのSupabaseクライアントが初期化されているかどうかを確認する関数
+export function isSupabaseServerInitialized() {
+  return isInitialized
+}
+
+// 遅延初期化のためのラッパー関数
+export const supabaseServer = new Proxy({} as ReturnType<typeof createClient<Database>>, {
+  get: (target, prop) => {
+    const client = getSupabaseServer()
+    // @ts-ignore
+    return client[prop]
+  },
+})
+
+// クライアントサイドのSupabaseクライアント（匿名キーを使用）
+export function createSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase URL and Anon Key are required. Check your environment variables.")
+    throw new Error("Supabase URL or Anonymous Key is missing. Please check your environment variables.")
   }
 
-  // クライアントインスタンスをシングルトンとして管理
-  if (!supabaseClientInstance) {
-    try {
-      supabaseClientInstance = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: {
-          persistSession: true,
-          storageKey: "supabase-auth",
-          autoRefreshToken: true,
-        },
-        db: {
-          schema: "public",
-        },
-        global: {
-          headers: {
-            "x-application-name": "esg-reporting-system-client",
-          },
-        },
-      })
-    } catch (error) {
-      console.error("Error initializing Supabase client:", error)
-      throw new Error(`Failed to initialize Supabase client: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  }
-
-  return supabaseClientInstance
+  return createClient<Database>(supabaseUrl, supabaseAnonKey)
 }
 
-// サーバーサイドクライアントが初期化されているかチェックするヘルパー関数
-export const isSupabaseServerInitialized = () => {
-  return !!supabaseServer
-}
+// クライアントサイドでのシングルトンインスタンス
+let clientInstance: ReturnType<typeof createClient<Database>> | null = null
 
-// サーバーサイドクライアントを安全に取得するヘルパー関数
-export const getSupabaseServer = () => {
-  if (!supabaseServer) {
-    // エラーメッセージを改善
-    const missingVars = []
-    if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL")
-    if (!supabaseServiceRoleKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY")
-
-    const errorMessage =
-      missingVars.length > 0
-        ? `Supabase server client is not initialized. Missing environment variables: ${missingVars.join(", ")}`
-        : "Supabase server client initialization failed. Check the console for more details."
-
-    throw new Error(errorMessage)
+// クライアントサイドのSupabaseクライアントを取得する関数（シングルトンパターン）
+export function getSupabaseClient() {
+  if (typeof window === "undefined") {
+    throw new Error("getSupabaseClient should only be called on the client side")
   }
 
-  return supabaseServer
+  if (!clientInstance) {
+    clientInstance = createSupabaseClient()
+  }
+
+  return clientInstance
 }
 
 // 接続テスト用の関数 - 集計関数を使用しないように修正
 export async function testSupabaseConnection() {
   try {
-    if (!supabaseServer) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
       return {
         success: false,
         error: "Supabase client not initialized",
         details: {
           url: !!supabaseUrl,
           anonKey: !!supabaseAnonKey,
-          serviceRoleKey: !!supabaseServiceRoleKey,
+          serviceRoleKey: !!supabaseServiceKey,
         },
       }
     }
 
+    const client = getSupabaseServer()
+
     // 集計関数を使用せずに単純なクエリを実行
-    const { data, error } = await supabaseServer.from("data_entries").select("id").limit(1)
+    const { data, error } = await client.from("data_entries").select("id").limit(1)
 
     if (error) {
       return {

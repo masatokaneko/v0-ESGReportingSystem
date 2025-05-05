@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { isSupabaseServerInitialized, getSupabaseServer } from "@/lib/supabase"
-import { handleApiError } from "@/lib/api-error-handler"
 
 // リトライ処理を行う関数
 async function fetchWithRetry(fn: () => Promise<any>, retries = 3, delay = 500) {
@@ -19,11 +18,11 @@ export async function GET() {
     if (!isSupabaseServerInitialized()) {
       console.warn("Supabase server is not initialized. Returning dummy data.")
       return NextResponse.json({
-        emissions: {
-          totalEmissions: 0,
-          monthlyChange: 0,
-          yearlyChange: 0,
-          unit: "kg-CO2e",
+        totalEmission: 0,
+        scopeData: {
+          scope1: 0,
+          scope2: 0,
+          scope3: 0,
         },
         emissionsBySource: [],
         emissionsTrend: [],
@@ -43,13 +42,20 @@ export async function GET() {
 
     if (emissionsError) {
       console.error("Error fetching emissions data:", emissionsError)
-      return handleApiError(emissionsError, "Failed to fetch emissions data")
+      throw new Error(`Failed to fetch emissions data: ${emissionsError.message}`)
     }
 
     // 排出量の計算 - JavaScriptで集計
-    const totalEmissions = (emissionsData || []).reduce((sum, entry) => {
+    const totalEmission = (emissionsData || []).reduce((sum, entry) => {
       return sum + (entry.emission || 0)
     }, 0)
+
+    // スコープ別データの集計（仮のデータ）
+    const scopeData = {
+      scope1: totalEmission * 0.3, // 仮の割合
+      scope2: totalEmission * 0.4, // 仮の割合
+      scope3: totalEmission * 0.3, // 仮の割合
+    }
 
     // 排出源別データの取得
     const { data: sourceData, error: sourceError } = await fetchWithRetry(async () => {
@@ -66,7 +72,7 @@ export async function GET() {
 
     if (sourceError) {
       console.error("Error fetching source data:", sourceError)
-      return handleApiError(sourceError, "Failed to fetch source data")
+      throw new Error(`Failed to fetch source data: ${sourceError.message}`)
     }
 
     // 排出源別データの集計 - JavaScriptで集計
@@ -103,7 +109,7 @@ export async function GET() {
 
     if (trendError) {
       console.error("Error fetching trend data:", trendError)
-      return handleApiError(trendError, "Failed to fetch trend data")
+      throw new Error(`Failed to fetch trend data: ${trendError.message}`)
     }
 
     // 月別データの集計 - JavaScriptで集計
@@ -150,7 +156,7 @@ export async function GET() {
 
     if (activityError) {
       console.error("Error fetching activity data:", activityError)
-      return handleApiError(activityError, "Failed to fetch activity data")
+      throw new Error(`Failed to fetch activity data: ${activityError.message}`)
     }
 
     const recentActivities = (activityData || []).map((entry) => ({
@@ -162,18 +168,10 @@ export async function GET() {
       status: entry.status,
     }))
 
-    // 月次変化率の計算（ダミーデータ）
-    const monthlyChange = 5.2
-    const yearlyChange = 12.5
-
     return NextResponse.json(
       {
-        emissions: {
-          totalEmissions: Number(totalEmissions.toFixed(2)),
-          monthlyChange,
-          yearlyChange,
-          unit: "kg-CO2e",
-        },
+        totalEmission,
+        scopeData,
         emissionsBySource,
         emissionsTrend,
         recentActivities,
@@ -186,18 +184,26 @@ export async function GET() {
     )
   } catch (error) {
     console.error("Error in dashboard summary API:", error)
-    return handleApiError(error, "Failed to fetch dashboard data", {
-      fallbackData: {
-        emissions: {
-          totalEmissions: 0,
-          monthlyChange: 0,
-          yearlyChange: 0,
-          unit: "kg-CO2e",
+    return NextResponse.json(
+      {
+        error: "Failed to fetch dashboard data",
+        message: error instanceof Error ? error.message : "Unknown error",
+        totalEmission: 0,
+        scopeData: {
+          scope1: 0,
+          scope2: 0,
+          scope3: 0,
         },
         emissionsBySource: [],
         emissionsTrend: [],
         recentActivities: [],
       },
-    })
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
+    )
   }
 }

@@ -5,85 +5,83 @@ import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import {
   BarChart3,
+  ClipboardList,
   FileInput,
-  CheckSquare,
-  FileOutput,
-  Search,
+  FileSpreadsheet,
+  Home,
   Settings,
-  LogOut,
-  Upload,
-  Link2,
-  AlertCircle,
-  Bug,
-  ShieldAlert,
+  ShieldCheck,
+  AlertTriangle,
+  Database,
+  FileCode,
 } from "lucide-react"
 
 const navItems = [
   {
     title: "ダッシュボード",
     href: "/",
-    icon: BarChart3,
+    icon: Home,
   },
   {
-    title: "データ登録",
+    title: "データ入力",
     href: "/data-entry",
     icon: FileInput,
   },
   {
-    title: "データ承認",
-    href: "/approval",
-    icon: CheckSquare,
-  },
-  {
-    title: "レポート出力",
-    href: "/reports",
-    icon: FileOutput,
-  },
-  {
-    title: "データ参照/検索",
+    title: "データ検索",
     href: "/data-search",
-    icon: Search,
+    icon: FileSpreadsheet,
   },
   {
-    title: "CSVアップロード",
-    href: "/upload/csv",
-    icon: Upload,
+    title: "承認管理",
+    href: "/approval",
+    icon: ShieldCheck,
   },
   {
-    title: "コネクタ設定",
-    href: "/settings/connectors",
-    icon: Link2,
+    title: "レポート",
+    href: "/reports",
+    icon: BarChart3,
   },
   {
     title: "設定",
     href: "/settings",
     icon: Settings,
-  },
-  {
-    title: "エラーログ管理",
-    href: "/admin/error-logs",
-    icon: AlertCircle,
-  },
-  {
-    title: "エラーテスト",
-    href: "/admin/error-test",
-    icon: Bug,
+    submenu: [
+      {
+        title: "コネクタ",
+        href: "/settings/connectors",
+      },
+    ],
   },
   {
     title: "管理者",
-    icon: ShieldAlert,
-    items: [
+    href: "/admin",
+    icon: ShieldCheck,
+    submenu: [
       {
         title: "エラーログ",
         href: "/admin/error-logs",
+        icon: AlertTriangle,
       },
       {
-        title: "エラーテスト",
-        href: "/admin/error-test",
+        title: "エラー分析",
+        href: "/admin/error-analytics",
+        icon: BarChart3,
       },
       {
         title: "システムステータス",
         href: "/admin/system-status",
+        icon: Database,
+      },
+      {
+        title: "API診断",
+        href: "/admin/api-diagnostics",
+        icon: FileCode,
+      },
+      {
+        title: "RLSポリシー",
+        href: "/admin/rls-policies",
+        icon: ShieldCheck,
       },
     ],
   },
@@ -93,57 +91,58 @@ export function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <div className="hidden border-r bg-muted/40 lg:block w-64">
-      <div className="flex h-full max-h-screen flex-col gap-2">
-        <div className="flex h-14 items-center border-b bg-primary px-4">
-          <Link href="/" className="flex items-center gap-2 font-semibold text-white">
-            <span className="text-xl">ESGレポート</span>
-          </Link>
+    <div className="pb-12 w-64 border-r">
+      <div className="space-y-4 py-4">
+        <div className="px-4 py-2">
+          <h2 className="mb-2 px-2 text-lg font-semibold tracking-tight">ESGレポーティングシステム</h2>
         </div>
-        <div className="flex-1 overflow-auto py-2">
-          <nav className="grid items-start px-2 text-sm font-medium">
-            {navItems.map((item, index) => {
-              if (item.items) {
-                return (
-                  <div key={index}>
-                    <div className="mb-2 mt-4 px-3 text-sm font-bold uppercase text-muted-foreground">{item.title}</div>
-                    {item.items.map((subItem, subIndex) => (
-                      <Link
-                        key={subIndex}
-                        href={subItem.href}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
-                          pathname === subItem.href ? "bg-muted text-primary" : "text-muted-foreground",
-                        )}
-                      >
-                        <span>{subItem.title}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )
-              }
-              const Icon = item.icon
-              return (
+        <div className="px-3">
+          {navItems.map((item, index) => {
+            const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
+            const hasSubmenu = item.submenu && item.submenu.length > 0
+
+            return (
+              <div key={index} className="mb-2">
                 <Link
-                  key={index}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
-                    pathname === item.href ? "bg-muted text-primary" : "text-muted-foreground",
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.title}</span>
+                  <item.icon className="h-4 w-4" />
+                  {item.title}
                 </Link>
-              )
-            })}
-          </nav>
-        </div>
-        <div className="mt-auto border-t p-4">
-          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary">
-            <LogOut className="h-4 w-4" />
-            <span>ログアウト</span>
-          </button>
+
+                {hasSubmenu && (
+                  <div className="ml-6 mt-1 space-y-1">
+                    {item.submenu?.map((subitem, subindex) => {
+                      const isSubActive = pathname === subitem.href
+                      const Icon = subitem.icon || ClipboardList
+
+                      return (
+                        <Link
+                          key={subindex}
+                          href={subitem.href}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all",
+                            isSubActive
+                              ? "bg-muted text-foreground font-medium"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          )}
+                        >
+                          <Icon className="h-3 w-3" />
+                          {subitem.title}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
