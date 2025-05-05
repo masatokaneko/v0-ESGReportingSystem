@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/hooks/use-toast"
-import { RefreshCw } from "lucide-react"
+import { RefreshCw, AlertTriangle } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface TableData {
   table_name: string
@@ -27,18 +28,24 @@ export default function RLSPoliciesPage() {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorDetails, setErrorDetails] = useState<any>(null)
 
   const fetchPolicies = async () => {
     setIsLoading(true)
     setError(null)
+    setErrorDetails(null)
     try {
       const response = await fetch("/api/debug/rls-policies")
+      const data = await response.json()
+
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.message || "Failed to fetch RLS policies")
+        throw new Error(data.message || data.error || "Failed to fetch RLS policies")
       }
 
-      const data = await response.json()
+      if (!data.success) {
+        throw new Error(data.message || data.error || "Failed to fetch RLS policies")
+      }
+
       setTables(data.tables || [])
       setPolicies(data.policies || [])
     } catch (error) {
@@ -78,13 +85,21 @@ export default function RLSPoliciesPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
-          <div className="flex">
-            <div className="ml-3">
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        </div>
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>エラーが発生しました</AlertTitle>
+          <AlertDescription>
+            <p>{error}</p>
+            {errorDetails && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-sm">詳細を表示</summary>
+                <pre className="mt-2 whitespace-pre-wrap text-xs bg-gray-100 p-2 rounded">
+                  {JSON.stringify(errorDetails, null, 2)}
+                </pre>
+              </details>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
       <div className="grid gap-6">
@@ -179,6 +194,34 @@ export default function RLSPoliciesPage() {
                 )}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>環境変数の確認</CardTitle>
+            <CardDescription>必要な環境変数が設定されているか確認します</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Alert className="mb-4">
+              <AlertTitle>環境変数の設定方法</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">
+                  以下の環境変数がVercelダッシュボードで正しく設定されていることを確認してください：
+                </p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>NEXT_PUBLIC_SUPABASE_URL - Supabaseプロジェクトの URL</li>
+                  <li>NEXT_PUBLIC_SUPABASE_ANON_KEY - 匿名キー（anon key）</li>
+                  <li>SUPABASE_SERVICE_ROLE_KEY - サービスロールキー（service_role key）</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+
+            <div className="mt-4">
+              <Button onClick={() => (window.location.href = "/admin/system-status")} variant="outline">
+                システムステータスを確認
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

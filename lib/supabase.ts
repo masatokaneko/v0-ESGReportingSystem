@@ -14,16 +14,25 @@ export function getSupabaseServer() {
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error("Supabase URL or Service Role Key is missing. Please check your environment variables.")
+      const missingVars = []
+      if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL")
+      if (!supabaseServiceKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY")
+
+      throw new Error(`Supabase client initialization failed. Missing environment variables: ${missingVars.join(", ")}`)
     }
 
-    supabaseServerInstance = createClient<Database>(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    })
-    isInitialized = true
+    try {
+      supabaseServerInstance = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      })
+      isInitialized = true
+    } catch (error) {
+      console.error("Error initializing Supabase client:", error)
+      throw new Error(`Failed to initialize Supabase client: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
   return supabaseServerInstance
 }
@@ -36,9 +45,14 @@ export function isSupabaseServerInitialized() {
 // 遅延初期化のためのラッパー関数
 export const supabaseServer = new Proxy({} as ReturnType<typeof createClient<Database>>, {
   get: (target, prop) => {
-    const client = getSupabaseServer()
-    // @ts-ignore
-    return client[prop]
+    try {
+      const client = getSupabaseServer()
+      // @ts-ignore
+      return client[prop]
+    } catch (error) {
+      console.error(`Error accessing Supabase client property ${String(prop)}:`, error)
+      throw error
+    }
   },
 })
 
@@ -48,7 +62,11 @@ export function createSupabaseClient() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase URL or Anonymous Key is missing. Please check your environment variables.")
+    const missingVars = []
+    if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL")
+    if (!supabaseAnonKey) missingVars.push("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
+    throw new Error(`Supabase client initialization failed. Missing environment variables: ${missingVars.join(", ")}`)
   }
 
   return createClient<Database>(supabaseUrl, supabaseAnonKey)
@@ -89,7 +107,16 @@ export async function testSupabaseConnection() {
       }
     }
 
-    const client = getSupabaseServer()
+    let client
+    try {
+      client = getSupabaseServer()
+    } catch (error) {
+      return {
+        success: false,
+        error: "Failed to initialize Supabase client",
+        message: error instanceof Error ? error.message : String(error),
+      }
+    }
 
     // 集計関数を使用せずに単純なクエリを実行
     const { data, error } = await client.from("data_entries").select("id").limit(1)

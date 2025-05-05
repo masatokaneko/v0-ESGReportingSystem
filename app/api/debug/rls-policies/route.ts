@@ -1,49 +1,77 @@
 import { NextResponse } from "next/server"
-import { getSupabaseServer, isSupabaseServerInitialized } from "@/lib/supabase"
+import { getSupabaseServer } from "@/lib/supabase"
 
 export async function GET() {
   try {
-    if (!isSupabaseServerInitialized()) {
+    // 環境変数のチェック
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      const missingVars = []
+      if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL")
+      if (!supabaseServiceKey) missingVars.push("SUPABASE_SERVICE_ROLE_KEY")
+
       return NextResponse.json(
         {
-          error: "Database connection error",
-          message: "Supabase client is not initialized. Please check environment variables.",
+          error: "環境変数が設定されていません",
+          message: `以下の環境変数を設定してください: ${missingVars.join(", ")}`,
+          missingVars,
         },
         { status: 500 },
       )
     }
 
-    const supabase = getSupabaseServer()
+    // Supabaseクライアントの取得
+    let supabase
+    try {
+      supabase = getSupabaseServer()
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: "Supabaseクライアントの初期化に失敗しました",
+          message: error instanceof Error ? error.message : "Unknown error",
+        },
+        { status: 500 },
+      )
+    }
 
     // テーブル一覧を取得
-    const { data: tables, error: tablesError } = await supabase.rpc("get_tables")
+    const { data: tables, error: tablesError } = await supabase.rpc("get_tables").catch((error) => {
+      return { data: null, error }
+    })
 
     if (tablesError) {
       return NextResponse.json(
         {
-          error: "Failed to fetch tables",
+          error: "テーブル一覧の取得に失敗しました",
           message: tablesError.message,
+          details: tablesError,
         },
         { status: 500 },
       )
     }
 
     // RLSポリシー一覧を取得
-    const { data: policies, error: policiesError } = await supabase.rpc("get_policies")
+    const { data: policies, error: policiesError } = await supabase.rpc("get_policies").catch((error) => {
+      return { data: null, error }
+    })
 
     if (policiesError) {
       return NextResponse.json(
         {
-          error: "Failed to fetch policies",
+          error: "RLSポリシー一覧の取得に失敗しました",
           message: policiesError.message,
+          details: policiesError,
         },
         { status: 500 },
       )
     }
 
     return NextResponse.json({
-      tables,
-      policies,
+      success: true,
+      tables: tables || [],
+      policies: policies || [],
     })
   } catch (error) {
     console.error("Error fetching RLS policies:", error)
@@ -51,6 +79,7 @@ export async function GET() {
       {
         error: "Internal Server Error",
         message: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 },
     )
