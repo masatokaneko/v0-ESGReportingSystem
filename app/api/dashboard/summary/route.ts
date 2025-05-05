@@ -1,209 +1,90 @@
 import { NextResponse } from "next/server"
-import { isSupabaseServerInitialized, getSupabaseServer } from "@/lib/supabase"
-
-// リトライ処理を行う関数
-async function fetchWithRetry(fn: () => Promise<any>, retries = 3, delay = 500) {
-  try {
-    return await fn()
-  } catch (error) {
-    if (retries <= 1) throw error
-    await new Promise((resolve) => setTimeout(resolve, delay))
-    return fetchWithRetry(fn, retries - 1, delay * 2)
-  }
-}
+import { executeQuery } from "@/lib/neon"
+import { logDatabaseConnectionError } from "@/lib/db-error-logger"
 
 export async function GET() {
   try {
-    // Supabaseクライアントが初期化されていない場合はダミーデータを返す
-    if (!isSupabaseServerInitialized()) {
-      console.warn("Supabase server is not initialized. Returning dummy data.")
-      return NextResponse.json({
-        totalEmission: 0,
-        scopeData: {
-          scope1: 0,
-          scope2: 0,
-          scope3: 0,
-        },
-        emissionsBySource: [],
-        emissionsTrend: [],
-        recentActivities: [],
-      })
+    // 総排出量
+    const totalEmissionsQuery = `
+      SELECT COALESCE(SUM(emission), 0) as total_emissions
+      FROM data_entries
+      WHERE status = 'approved'
+    `
+    const totalEmissionsResult = await executeQuery(totalEmissionsQuery)
+
+    // 活動タイプ別の排出量
+    const emissionsBySourceQuery = `
+      SELECT activity_type, COALESCE(SUM(emission), 0) as total
+      FROM data_entries
+      WHERE status = 'approved'
+      GROUP BY activity_type
+      ORDER BY total DESC
+    `
+    const emissionsBySourceResult = await executeQuery(emissionsBySourceQuery)
+
+    // 月別の排出量トレンド（過去12ヶ月）
+    const emissionsTrendQuery = `
+      SELECT 
+        DATE_TRUNC('month', entry_date) as month,
+        COALESCE(SUM(emission), 0) as total
+      FROM data_entries
+      WHERE 
+        status = 'approved' AND
+        entry_date >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
+      GROUP BY month
+      ORDER BY month
+    `
+    const emissionsTrendResult = await executeQuery(emissionsTrendQuery)
+
+    // 最近の活動
+    const recentActivityQuery = `
+      SELECT 
+        de.id,
+        de.entry_date,
+        de.activity_type,
+        de.activity_amount,
+        de.emission,
+        de.status,
+        de.created_at,
+        l.name as location_name,
+        d.name as department_name
+      FROM data_entries de
+      LEFT JOIN locations l ON de.location_id = l.id
+      LEFT JOIN departments d ON de.department_id = d.id
+      ORDER BY de.created_at DESC
+      LIMIT 10
+    `
+    const recentActivityResult = await executeQuery(recentActivityQuery)
+
+    // 承認待ちの件数
+    const pendingApprovalQuery = `
+      SELECT COUNT(*) as count
+      FROM data_entries
+      WHERE status = 'pending'
+    `
+    const pendingApprovalResult = await executeQuery(pendingApprovalQuery)
+
+    if (
+      !totalEmissionsResult.success ||
+      !emissionsBySourceResult.success ||
+      !emissionsTrendResult.success ||
+      !recentActivityResult.success ||
+      !pendingApprovalResult.success
+    ) {
+      const error = new Error("One or more dashboard queries failed")
+      await logDatabaseConnectionError(error, { endpoint: "/api/dashboard/summary" })
+      return NextResponse.json({ error: "Failed to fetch dashboard data" }, { status: 500 })
     }
 
-    const supabase = getSupabaseServer()
-
-    // 総排出量の取得 - 集計関数を使用せずにデータを取得して手動で集計
-    const { data: emissionsData, error: emissionsError } = await fetchWithRetry(async () => {
-      return await supabase
-        .from("data_entries")
-        .select("emission, emission_factor_id, emission_factors!inner(id, factor, category)")
-        .eq("status", "approved")
+    return NextResponse.json({
+      totalEmissions: totalEmissionsResult.data?.[0]?.total_emissions || 0,
+      emissionsBySource: emissionsBySourceResult.data || [],
+      emissionsTrend: emissionsTrendResult.data || [],
+      recentActivity: recentActivityResult.data || [],
+      pendingApprovalCount: pendingApprovalResult.data?.[0]?.count || 0,
     })
-
-    if (emissionsError) {
-      console.error("Error fetching emissions data:", emissionsError)
-      throw new Error(`Failed to fetch emissions data: ${emissionsError.message}`)
-    }
-
-    // 排出量の計算 - JavaScriptで集計
-    const totalEmission = (emissionsData || []).reduce((sum, entry) => {
-      return sum + (entry.emission || 0)
-    }, 0)
-
-    // スコープ別データの集計（仮のデータ）
-    const scopeData = {
-      scope1: totalEmission * 0.3, // 仮の割合
-      scope2: totalEmission * 0.4, // 仮の割合
-      scope3: totalEmission * 0.3, // 仮の割合
-    }
-
-    // 排出源別データの取得
-    const { data: sourceData, error: sourceError } = await fetchWithRetry(async () => {
-      return await supabase
-        .from("data_entries")
-        .select(`
-          emission,
-          activity_type,
-          emission_factor_id,
-          emission_factors!inner(id, factor, category)
-        `)
-        .eq("status", "approved")
-    })
-
-    if (sourceError) {
-      console.error("Error fetching source data:", sourceError)
-      throw new Error(`Failed to fetch source data: ${sourceError.message}`)
-    }
-
-    // 排出源別データの集計 - JavaScriptで集計
-    const sourceMap = new Map()
-    ;(sourceData || []).forEach((entry) => {
-      const category = entry.activity_type || "その他"
-      const value = entry.emission || 0
-
-      if (sourceMap.has(category)) {
-        sourceMap.set(category, sourceMap.get(category) + value)
-      } else {
-        sourceMap.set(category, value)
-      }
-    })
-
-    const emissionsBySource = Array.from(sourceMap.entries()).map(([name, value]) => ({
-      name,
-      value: Number(value.toFixed(2)),
-    }))
-
-    // 月別排出量トレンドの取得
-    const { data: trendData, error: trendError } = await fetchWithRetry(async () => {
-      return await supabase
-        .from("data_entries")
-        .select(`
-          emission,
-          entry_date,
-          emission_factor_id,
-          emission_factors!inner(id, factor, category)
-        `)
-        .eq("status", "approved")
-        .order("entry_date", { ascending: true })
-    })
-
-    if (trendError) {
-      console.error("Error fetching trend data:", trendError)
-      throw new Error(`Failed to fetch trend data: ${trendError.message}`)
-    }
-
-    // 月別データの集計 - JavaScriptで集計
-    const trendMap = new Map()
-    ;(trendData || []).forEach((entry) => {
-      if (!entry.entry_date) return
-
-      const date = new Date(entry.entry_date)
-      const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
-      const value = entry.emission || 0
-
-      if (trendMap.has(monthYear)) {
-        trendMap.set(monthYear, trendMap.get(monthYear) + value)
-      } else {
-        trendMap.set(monthYear, value)
-      }
-    })
-
-    const emissionsTrend = Array.from(trendMap.entries())
-      .map(([month, value]) => ({
-        month,
-        emissions: Number(value.toFixed(2)),
-      }))
-      .slice(-12) // 直近12ヶ月のデータのみ
-
-    // 最近のアクティビティの取得
-    const { data: activityData, error: activityError } = await fetchWithRetry(async () => {
-      return await supabase
-        .from("data_entries")
-        .select(`
-          id,
-          emission,
-          status,
-          created_at,
-          updated_at,
-          submitter,
-          activity_type,
-          emission_factor_id,
-          emission_factors!inner(id, category)
-        `)
-        .order("updated_at", { ascending: false })
-        .limit(5)
-    })
-
-    if (activityError) {
-      console.error("Error fetching activity data:", activityError)
-      throw new Error(`Failed to fetch activity data: ${activityError.message}`)
-    }
-
-    const recentActivities = (activityData || []).map((entry) => ({
-      id: entry.id,
-      action: `${entry.activity_type || "データ"} (${entry.emission_factors?.category || "未分類"})`,
-      user: entry.submitter || "システム",
-      timestamp: entry.updated_at || entry.created_at,
-      details: `排出量: ${entry.emission || 0} kg-CO2e`,
-      status: entry.status,
-    }))
-
-    return NextResponse.json(
-      {
-        totalEmission,
-        scopeData,
-        emissionsBySource,
-        emissionsTrend,
-        recentActivities,
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
-        },
-      },
-    )
   } catch (error) {
-    console.error("Error in dashboard summary API:", error)
-    return NextResponse.json(
-      {
-        error: "Failed to fetch dashboard data",
-        message: error instanceof Error ? error.message : "Unknown error",
-        totalEmission: 0,
-        scopeData: {
-          scope1: 0,
-          scope2: 0,
-          scope3: 0,
-        },
-        emissionsBySource: [],
-        emissionsTrend: [],
-        recentActivities: [],
-      },
-      {
-        status: 500,
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
-        },
-      },
-    )
+    await logDatabaseConnectionError(error as Error, { endpoint: "/api/dashboard/summary" })
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
   }
 }

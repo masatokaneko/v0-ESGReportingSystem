@@ -1,55 +1,74 @@
 import { NextResponse } from "next/server"
-import { supabaseServer } from "@/lib/supabase"
+import { executeQuery } from "@/lib/neon"
+import { logDatabaseConnectionError } from "@/lib/db-error-logger"
 
-// 排出係数一覧を取得するAPI
 export async function GET() {
   try {
-    const { data, error } = await supabaseServer.from("emission_factors").select("*").order("activity_type")
+    const result = await executeQuery(`
+      SELECT * FROM emission_factors 
+      ORDER BY activity_type, category, valid_from DESC
+    `)
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!result.success) {
+      const error = new Error(result.error || "Database query failed")
+      await logDatabaseConnectionError(error, { endpoint: "/api/emission-factors" })
+      return NextResponse.json(
+        {
+          error: "Database query failed",
+          message: result.error,
+        },
+        { status: 500 },
+      )
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(result.data)
   } catch (error) {
-    console.error("Emission factors fetch error:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    await logDatabaseConnectionError(error as Error, { endpoint: "/api/emission-factors" })
+    return NextResponse.json(
+      {
+        error: "Internal Server Error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }
 
-// 新しい排出係数を追加するAPI
 export async function POST(request: Request) {
   try {
     const body = await request.json()
 
     // 必須フィールドの検証
-    if (!body.activity_type || !body.category || body.factor === undefined || !body.unit) {
-      return NextResponse.json({ error: "Activity type, category, factor and unit are required" }, { status: 400 })
+    if (!body.activity_type || !body.category || !body.factor || !body.unit) {
+      return NextResponse.json({ error: "Activity type, category, factor, and unit are required" }, { status: 400 })
     }
 
-    const { data, error } = await supabaseServer
-      .from("emission_factors")
-      .insert([
-        {
-          activity_type: body.activity_type,
-          category: body.category,
-          factor: body.factor,
-          unit: body.unit,
-          valid_from: body.valid_from || null,
-          valid_to: body.valid_to || null,
-        },
-      ])
-      .select()
+    const query = `
+      INSERT INTO emission_factors (
+        activity_type, category, factor, unit, valid_from, valid_to, created_at, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      RETURNING *
+    `
 
-    if (error) {
+    const result = await executeQuery(query, [
+      body.activity_type,
+      body.category,
+      body.factor,
+      body.unit,
+      body.valid_from || null,
+      body.valid_to || null,
+    ])
+
+    if (!result.success) {
       // 一意性制約違反の特別処理
-      if (error.code === "23505") {
-        return NextResponse.json({ error: "An emission factor with these parameters already exists" }, { status: 409 })
+      if (result.error?.includes("duplicate key")) {
+        return NextResponse.json({ error: "An emission factor with these details already exists" }, { status: 409 })
       }
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: result.error }, { status: 500 })
     }
 
-    return NextResponse.json(data[0], { status: 201 })
+    return NextResponse.json(result.data?.[0], { status: 201 })
   } catch (error) {
     console.error("Emission factor creation error:", error)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })

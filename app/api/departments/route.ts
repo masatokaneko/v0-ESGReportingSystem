@@ -1,23 +1,36 @@
 import { NextResponse } from "next/server"
-import { supabaseServer } from "@/lib/supabase"
+import { executeQuery } from "@/lib/neon"
+import { logDatabaseConnectionError } from "@/lib/db-error-logger"
 
-// 部門一覧を取得するAPI
 export async function GET() {
   try {
-    const { data, error } = await supabaseServer.from("departments").select("*").order("name")
+    const result = await executeQuery("SELECT * FROM departments ORDER BY name")
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!result.success) {
+      const error = new Error(result.error || "Database query failed")
+      await logDatabaseConnectionError(error, { endpoint: "/api/departments" })
+      return NextResponse.json(
+        {
+          error: "Database query failed",
+          message: result.error,
+        },
+        { status: 500 },
+      )
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(result.data)
   } catch (error) {
-    console.error("Departments fetch error:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    await logDatabaseConnectionError(error as Error, { endpoint: "/api/departments" })
+    return NextResponse.json(
+      {
+        error: "Internal Server Error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }
 
-// 新しい部門を追加するAPI
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -27,25 +40,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name and code are required" }, { status: 400 })
     }
 
-    const { data, error } = await supabaseServer
-      .from("departments")
-      .insert([
-        {
-          name: body.name,
-          code: body.code,
-        },
-      ])
-      .select()
+    const query = `
+      INSERT INTO departments (name, code, created_at, updated_at)
+      VALUES ($1, $2, NOW(), NOW())
+      RETURNING *
+    `
 
-    if (error) {
+    const result = await executeQuery(query, [body.name, body.code])
+
+    if (!result.success) {
       // コード重複エラーの特別処理
-      if (error.code === "23505") {
+      if (result.error?.includes("duplicate key")) {
         return NextResponse.json({ error: "A department with this code already exists" }, { status: 409 })
       }
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ error: result.error }, { status: 500 })
     }
 
-    return NextResponse.json(data[0], { status: 201 })
+    return NextResponse.json(result.data?.[0], { status: 201 })
   } catch (error) {
     console.error("Department creation error:", error)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })

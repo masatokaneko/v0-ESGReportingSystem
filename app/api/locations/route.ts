@@ -1,35 +1,64 @@
 import { NextResponse } from "next/server"
-import { getSupabaseServer, isSupabaseServerInitialized } from "@/lib/supabase"
-import { handleApiError } from "@/lib/api-error-handler"
+import { executeQuery } from "@/lib/neon"
 import { logDatabaseConnectionError } from "@/lib/db-error-logger"
 
 export async function GET() {
   try {
-    // Supabaseサーバークライアントが初期化されているか確認
-    if (!isSupabaseServerInitialized()) {
-      const error = new Error("Supabase server client is not initialized")
+    const result = await executeQuery("SELECT * FROM locations ORDER BY name")
+
+    if (!result.success) {
+      const error = new Error(result.error || "Database query failed")
       await logDatabaseConnectionError(error, { endpoint: "/api/locations" })
       return NextResponse.json(
         {
-          error: "Database connection error",
-          message: "Supabase client is not initialized. Please check environment variables.",
-          requiredEnvVars: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"],
+          error: "Database query failed",
+          message: result.error,
         },
         { status: 500 },
       )
     }
 
-    const supabase = getSupabaseServer()
-    const { data, error } = await supabase.from("locations").select("*").order("name")
-
-    if (error) {
-      throw error
-    }
-
-    return NextResponse.json(data)
+    return NextResponse.json(result.data)
   } catch (error) {
-    return handleApiError(error, "Failed to fetch locations")
+    await logDatabaseConnectionError(error as Error, { endpoint: "/api/locations" })
+    return NextResponse.json(
+      {
+        error: "Internal Server Error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }
 
-// 他のメソッド（POST, PUT, DELETE）も同様に修正
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+
+    // 必須フィールドの検証
+    if (!body.name || !body.code) {
+      return NextResponse.json({ error: "Name and code are required" }, { status: 400 })
+    }
+
+    const query = `
+      INSERT INTO locations (name, code, address, type, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+      RETURNING *
+    `
+
+    const result = await executeQuery(query, [body.name, body.code, body.address || null, body.type || null])
+
+    if (!result.success) {
+      // コード重複エラーの特別処理
+      if (result.error?.includes("duplicate key")) {
+        return NextResponse.json({ error: "A location with this code already exists" }, { status: 409 })
+      }
+      return NextResponse.json({ error: result.error }, { status: 500 })
+    }
+
+    return NextResponse.json(result.data?.[0], { status: 201 })
+  } catch (error) {
+    console.error("Location creation error:", error)
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+  }
+}
