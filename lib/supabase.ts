@@ -97,11 +97,10 @@ export const getSupabaseServer = () => {
     throw new Error(errorMessage)
   }
 
-  // 接続テスト
   return supabaseServer
 }
 
-// 接続テスト用の関数
+// 接続テスト用の関数 - 集計関数を使用しないように修正
 export async function testSupabaseConnection() {
   try {
     if (!supabaseServer) {
@@ -116,8 +115,8 @@ export async function testSupabaseConnection() {
       }
     }
 
-    // 簡単なクエリを実行して接続をテスト
-    const { data, error } = await supabaseServer.from("data_entries").select("count()", { count: "exact" }).limit(1)
+    // 集計関数を使用せずに単純なクエリを実行
+    const { data, error } = await supabaseServer.from("data_entries").select("id").limit(1)
 
     if (error) {
       return {

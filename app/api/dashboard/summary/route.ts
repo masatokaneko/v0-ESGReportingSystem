@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { isSupabaseServerInitialized, getSupabaseServer } from "@/lib/supabase"
-import { logClientError } from "@/lib/error-logger"
 
 // リトライ処理を行う関数
 async function fetchWithRetry(fn: () => Promise<any>, retries = 3, delay = 500) {
@@ -33,15 +32,11 @@ export async function GET() {
 
     const supabase = getSupabaseServer()
 
-    // 総排出量の取得 - 実際のスキーマに合わせて修正
+    // 総排出量の取得 - 集計関数を使用せずにデータを取得して手動で集計
     const { data: emissionsData, error: emissionsError } = await fetchWithRetry(async () => {
       return await supabase
         .from("data_entries")
-        .select(`
-          emission,
-          emission_factor_id,
-          emission_factors!inner(id, factor, category)
-        `)
+        .select("emission, emission_factor_id, emission_factors!inner(id, factor, category)")
         .eq("status", "approved")
     })
 
@@ -50,12 +45,12 @@ export async function GET() {
       throw new Error(`Failed to fetch emissions data: ${emissionsError.message}`)
     }
 
-    // 排出量の計算
+    // 排出量の計算 - JavaScriptで集計
     const totalEmissions = (emissionsData || []).reduce((sum, entry) => {
       return sum + (entry.emission || 0)
     }, 0)
 
-    // 排出源別データの取得 - 実際のスキーマに合わせて修正
+    // 排出源別データの取得
     const { data: sourceData, error: sourceError } = await fetchWithRetry(async () => {
       return await supabase
         .from("data_entries")
@@ -73,7 +68,7 @@ export async function GET() {
       throw new Error(`Failed to fetch source data: ${sourceError.message}`)
     }
 
-    // 排出源別データの集計
+    // 排出源別データの集計 - JavaScriptで集計
     const sourceMap = new Map()
     ;(sourceData || []).forEach((entry) => {
       const category = entry.activity_type || "その他"
@@ -91,7 +86,7 @@ export async function GET() {
       value: Number(value.toFixed(2)),
     }))
 
-    // 月別排出量トレンドの取得 - 実際のスキーマに合わせて修正
+    // 月別排出量トレンドの取得
     const { data: trendData, error: trendError } = await fetchWithRetry(async () => {
       return await supabase
         .from("data_entries")
@@ -110,7 +105,7 @@ export async function GET() {
       throw new Error(`Failed to fetch trend data: ${trendError.message}`)
     }
 
-    // 月別データの集計
+    // 月別データの集計 - JavaScriptで集計
     const trendMap = new Map()
     ;(trendData || []).forEach((entry) => {
       if (!entry.entry_date) return
@@ -133,7 +128,7 @@ export async function GET() {
       }))
       .slice(-12) // 直近12ヶ月のデータのみ
 
-    // 最近のアクティビティの取得 - 実際のスキーマに合わせて修正
+    // 最近のアクティビティの取得
     const { data: activityData, error: activityError } = await fetchWithRetry(async () => {
       return await supabase
         .from("data_entries")
@@ -170,34 +165,26 @@ export async function GET() {
     const monthlyChange = 5.2
     const yearlyChange = 12.5
 
-    return NextResponse.json({
-      emissions: {
-        totalEmissions: Number(totalEmissions.toFixed(2)),
-        monthlyChange,
-        yearlyChange,
-        unit: "kg-CO2e",
+    return NextResponse.json(
+      {
+        emissions: {
+          totalEmissions: Number(totalEmissions.toFixed(2)),
+          monthlyChange,
+          yearlyChange,
+          unit: "kg-CO2e",
+        },
+        emissionsBySource,
+        emissionsTrend,
+        recentActivities,
       },
-      emissionsBySource,
-      emissionsTrend,
-      recentActivities,
-    })
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
+    )
   } catch (error) {
     console.error("Error in dashboard summary API:", error)
-
-    // エラーログに記録
-    try {
-      await logClientError({
-        message: "Dashboard API error",
-        source: "dashboard-summary-api",
-        severity: "error",
-        stack: error instanceof Error ? error.stack : undefined,
-        context: { error: error instanceof Error ? error.message : String(error) },
-      })
-    } catch (logError) {
-      console.error("Failed to log error:", logError)
-    }
-
-    // エラーレスポンスを返す
     return NextResponse.json(
       {
         error: "Failed to fetch dashboard data",
@@ -212,7 +199,12 @@ export async function GET() {
         emissionsTrend: [],
         recentActivities: [],
       },
-      { status: 500 },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
     )
   }
 }
