@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
 import { logClientError } from "@/lib/error-logger"
+import { AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface SourceData {
   name: string
@@ -16,43 +18,56 @@ export function EmissionsBySource() {
   const [data, setData] = useState<SourceData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      const response = await fetch("/api/dashboard/summary", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || `HTTP error ${response.status}`)
+      }
+
+      const dashboardData = await response.json()
+
+      if (dashboardData.emissionsBySource) {
+        setData(dashboardData.emissionsBySource)
+      } else {
+        console.warn("Emissions by source data not found in API response")
+        setData([])
+      }
+    } catch (error) {
+      console.error("Error fetching emissions by source:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      setError(errorMessage)
+      logClientError({
+        message: "Failed to fetch emissions by source data",
+        source: "EmissionsBySource",
+        severity: "error",
+        stack: error instanceof Error ? error.stack : undefined,
+        context: { component: "EmissionsBySource", retryCount },
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch("/api/dashboard/summary")
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.message || "Failed to fetch dashboard data")
-        }
-
-        const dashboardData = await response.json()
-
-        // APIからのデータ構造に合わせて処理
-        if (dashboardData.emissionsBySource) {
-          setData(dashboardData.emissionsBySource)
-        } else {
-          console.warn("Emissions by source data not found in API response")
-          setData([])
-        }
-      } catch (error) {
-        console.error("Error fetching emissions by source:", error)
-        const errorMessage = error instanceof Error ? error.message : "Unknown error"
-        setError(errorMessage)
-        logClientError({
-          message: "Failed to fetch emissions by source data",
-          source: "EmissionsBySource",
-          severity: "error",
-          stack: error instanceof Error ? error.stack : undefined,
-          context: { component: "EmissionsBySource" },
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     fetchData()
-  }, [])
+  }, [retryCount])
+
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
+  }
 
   if (isLoading) {
     return (
@@ -75,8 +90,14 @@ export function EmissionsBySource() {
           <CardTitle>排出源別割合</CardTitle>
           <CardDescription>活動タイプ別の排出量割合</CardDescription>
         </CardHeader>
-        <CardContent className="h-[300px] flex items-center justify-center text-red-500">
-          <p>データの読み込みに失敗しました: {error}</p>
+        <CardContent className="h-[300px] flex flex-col items-center justify-center">
+          <div className="flex items-center gap-2 mb-4 text-red-500">
+            <AlertCircle className="h-5 w-5" />
+            <p>データの読み込みに失敗しました: {error}</p>
+          </div>
+          <Button onClick={handleRetry} variant="outline">
+            再試行
+          </Button>
         </CardContent>
       </Card>
     )

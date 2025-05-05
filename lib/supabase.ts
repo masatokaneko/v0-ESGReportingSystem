@@ -18,19 +18,26 @@ if (!supabaseServiceRoleKey) {
   console.warn("Warning: Missing environment variable SUPABASE_SERVICE_ROLE_KEY")
 }
 
-// サーバーサイドで使用するクライアント
-let supabaseServer: ReturnType<typeof createClient> | null = null
+// サーバーサイドで使用するクライアント（サービスロールキーを使用）
+export const supabaseServer =
+  supabaseUrl && supabaseServiceRoleKey
+    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        db: {
+          schema: "public",
+        },
+        global: {
+          headers: {
+            "x-application-name": "esg-reporting-system",
+          },
+        },
+      })
+    : null
 
-// サーバーサイドクライアントの初期化を試みる（環境変数がある場合のみ）
-if (supabaseUrl && supabaseServiceRoleKey) {
-  try {
-    supabaseServer = createClient(supabaseUrl, supabaseServiceRoleKey)
-  } catch (error) {
-    console.error("Error initializing Supabase server client:", error)
-  }
-}
-
-// クライアントサイドで使用するクライアント
+// クライアントサイドで使用するクライアント（シングルトンパターン）
 let supabaseClientInstance: ReturnType<typeof createClient> | null = null
 
 export const createSupabaseClient = () => {
@@ -45,7 +52,21 @@ export const createSupabaseClient = () => {
   // クライアントインスタンスをシングルトンとして管理
   if (!supabaseClientInstance) {
     try {
-      supabaseClientInstance = createClient(supabaseUrl, supabaseAnonKey)
+      supabaseClientInstance = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: true,
+          storageKey: "supabase-auth",
+          autoRefreshToken: true,
+        },
+        db: {
+          schema: "public",
+        },
+        global: {
+          headers: {
+            "x-application-name": "esg-reporting-system-client",
+          },
+        },
+      })
     } catch (error) {
       console.error("Error initializing Supabase client:", error)
       throw new Error(`Failed to initialize Supabase client: ${error instanceof Error ? error.message : String(error)}`)
@@ -78,5 +99,14 @@ export const getSupabaseServer = () => {
   return supabaseServer
 }
 
-// サーバーサイドクライアントのエクスポート
-export { supabaseServer }
+// PostgreSQL接続情報を取得するヘルパー関数（必要に応じて使用）
+export const getPostgresConnectionInfo = () => {
+  return {
+    host: process.env.POSTGRES_HOST,
+    database: process.env.POSTGRES_DATABASE,
+    user: process.env.POSTGRES_USER,
+    password: process.env.POSTGRES_PASSWORD,
+    url: process.env.POSTGRES_URL,
+    urlNonPooling: process.env.POSTGRES_URL_NON_POOLING,
+  }
+}

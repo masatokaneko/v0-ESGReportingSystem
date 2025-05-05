@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { logClientError } from "@/lib/error-logger"
+import { AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface ActivityItem {
   id: string
@@ -18,43 +20,52 @@ export function RecentActivity() {
   const [activities, setActivities] = useState<ActivityItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      const response = await fetch("/api/dashboard/summary", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || `HTTP error ${response.status}`)
+      }
+
+      const dashboardData = await response.json()
+
+      if (dashboardData.recentActivities) {
+        setActivities(dashboardData.recentActivities)
+      } else {
+        console.warn("Recent activities data not found in API response")
+        setActivities([])
+      }
+    } catch (error) {
+      console.error("Error fetching recent activities:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      setError(errorMessage)
+      logClientError({
+        message: "Failed to fetch recent activities data",
+        source: "RecentActivity",
+        severity: "error",
+        stack: error instanceof Error ? error.stack : undefined,
+        context: { component: "RecentActivity", retryCount },
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch("/api/dashboard/summary")
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.message || "Failed to fetch dashboard data")
-        }
-
-        const dashboardData = await response.json()
-
-        // APIからのデータ構造に合わせて処理
-        if (dashboardData.recentActivities) {
-          setActivities(dashboardData.recentActivities)
-        } else {
-          console.warn("Recent activities data not found in API response")
-          setActivities([])
-        }
-      } catch (error) {
-        console.error("Error fetching recent activities:", error)
-        const errorMessage = error instanceof Error ? error.message : "Unknown error"
-        setError(errorMessage)
-        logClientError({
-          message: "Failed to fetch recent activities data",
-          source: "RecentActivity",
-          severity: "error",
-          stack: error instanceof Error ? error.stack : undefined,
-          context: { component: "RecentActivity" },
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     fetchData()
-  }, [])
+  }, [retryCount])
 
   // 日付をフォーマットする関数
   const formatDate = (dateString: string) => {
@@ -89,6 +100,10 @@ export function RecentActivity() {
     }
   }
 
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
+  }
+
   if (isLoading) {
     return (
       <Card className="col-span-3">
@@ -120,8 +135,14 @@ export function RecentActivity() {
           <CardDescription>直近のデータ入力・承認状況</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-red-500">
-            <p>データの読み込みに失敗しました: {error}</p>
+          <div className="flex flex-col items-center justify-center h-[200px]">
+            <div className="flex items-center gap-2 mb-4 text-red-500">
+              <AlertCircle className="h-5 w-5" />
+              <p>データの読み込みに失敗しました: {error}</p>
+            </div>
+            <Button onClick={handleRetry} variant="outline">
+              再試行
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -136,7 +157,7 @@ export function RecentActivity() {
           <CardDescription>直近のデータ入力・承認状況</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-muted-foreground">
+          <div className="flex items-center justify-center h-[200px] text-muted-foreground">
             <p>最近の活動はありません</p>
           </div>
         </CardContent>

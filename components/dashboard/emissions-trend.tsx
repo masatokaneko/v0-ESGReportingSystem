@@ -4,6 +4,8 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import { logClientError } from "@/lib/error-logger"
+import { AlertCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface TrendData {
   month: string
@@ -14,43 +16,52 @@ export function EmissionsTrend() {
   const [data, setData] = useState<TrendData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      const response = await fetch("/api/dashboard/summary", {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || `HTTP error ${response.status}`)
+      }
+
+      const dashboardData = await response.json()
+
+      if (dashboardData.emissionsTrend) {
+        setData(dashboardData.emissionsTrend)
+      } else {
+        console.warn("Emissions trend data not found in API response")
+        setData([])
+      }
+    } catch (error) {
+      console.error("Error fetching emissions trend:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown error"
+      setError(errorMessage)
+      logClientError({
+        message: "Failed to fetch emissions trend data",
+        source: "EmissionsTrend",
+        severity: "error",
+        stack: error instanceof Error ? error.stack : undefined,
+        context: { component: "EmissionsTrend", retryCount },
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch("/api/dashboard/summary")
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.message || "Failed to fetch dashboard data")
-        }
-
-        const dashboardData = await response.json()
-
-        // APIからのデータ構造に合わせて処理
-        if (dashboardData.emissionsTrend) {
-          setData(dashboardData.emissionsTrend)
-        } else {
-          console.warn("Emissions trend data not found in API response")
-          setData([])
-        }
-      } catch (error) {
-        console.error("Error fetching emissions trend:", error)
-        const errorMessage = error instanceof Error ? error.message : "Unknown error"
-        setError(errorMessage)
-        logClientError({
-          message: "Failed to fetch emissions trend data",
-          source: "EmissionsTrend",
-          severity: "error",
-          stack: error instanceof Error ? error.stack : undefined,
-          context: { component: "EmissionsTrend" },
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     fetchData()
-  }, [])
+  }, [retryCount])
 
   // 月名を日本語に変換する関数
   const formatMonth = (monthYear: string) => {
@@ -63,6 +74,10 @@ export function EmissionsTrend() {
       console.error("Error formatting month:", error)
       return monthYear
     }
+  }
+
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
   }
 
   if (isLoading) {
@@ -86,8 +101,14 @@ export function EmissionsTrend() {
           <CardTitle>月別排出量推移</CardTitle>
           <CardDescription>過去12ヶ月の排出量推移</CardDescription>
         </CardHeader>
-        <CardContent className="h-[300px] flex items-center justify-center text-red-500">
-          <p>データの読み込みに失敗しました: {error}</p>
+        <CardContent className="h-[300px] flex flex-col items-center justify-center text-red-500">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertCircle className="h-5 w-5" />
+            <p>データの読み込みに失敗しました: {error}</p>
+          </div>
+          <Button onClick={handleRetry} variant="outline">
+            再試行
+          </Button>
         </CardContent>
       </Card>
     )
