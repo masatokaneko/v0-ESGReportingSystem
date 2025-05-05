@@ -48,10 +48,24 @@ export async function GET(request: Request) {
     const { data, error } = await query
 
     if (error) {
+      console.error("Supabase query error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    // データの整合性を確保するための処理
+    const processedData =
+      data?.map((entry) => {
+        // 外部キー参照が存在しない場合のデフォルト値を設定
+        return {
+          ...entry,
+          // 明示的にnullの場合はnullを返す（フロントエンドでデフォルト値を設定）
+          locations: entry.locations || null,
+          departments: entry.departments || null,
+          emission_factors: entry.emission_factors || null,
+        }
+      }) || []
+
+    return NextResponse.json(processedData)
   } catch (error) {
     console.error("Data entries fetch error:", error)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
@@ -111,10 +125,22 @@ export async function POST(request: Request) {
       `)
 
     if (error) {
+      console.error("Data entry creation error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data[0], { status: 201 })
+    // データの整合性を確保するための処理
+    const processedData =
+      data?.map((entry) => {
+        return {
+          ...entry,
+          locations: entry.locations || null,
+          departments: entry.departments || null,
+          emission_factors: entry.emission_factors || null,
+        }
+      }) || []
+
+    return NextResponse.json(processedData[0], { status: 201 })
   } catch (error) {
     console.error("Data entry creation error:", error)
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })

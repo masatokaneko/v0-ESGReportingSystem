@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileText, Download } from "lucide-react"
+import { FileText, Download, RefreshCw } from "lucide-react"
 import { DataDetailDialog } from "../approval/data-detail-dialog"
 import { toast } from "@/hooks/use-toast"
 import type { SearchFilters } from "./data-search-filters"
@@ -12,11 +12,11 @@ import type { SearchFilters } from "./data-search-filters"
 interface DataEntry {
   id: number
   entry_date: string
-  location: { id: number; name: string; code: string }
-  department: { id: number; name: string; code: string }
+  location?: { id: number; name: string; code: string } | null
+  department?: { id: number; name: string; code: string } | null
   activity_type: string
   activity_amount: number
-  emission_factor: { id: number; activity_type: string; factor: number; unit: string }
+  emission_factor?: { id: number; activity_type: string; factor: number; unit: string } | null
   emission: number
   status: "pending" | "approved" | "rejected"
   submitter: string
@@ -29,6 +29,7 @@ export function DataSearchTable() {
   const [selectedItem, setSelectedItem] = useState<DataEntry | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isError, setIsError] = useState(false)
   const [currentFilters, setCurrentFilters] = useState<SearchFilters>({})
 
   // データの取得
@@ -38,6 +39,7 @@ export function DataSearchTable() {
 
   const fetchData = async (filters: SearchFilters) => {
     setIsLoading(true)
+    setIsError(false)
     try {
       // クエリパラメータの構築
       const queryParams = new URLSearchParams()
@@ -49,16 +51,32 @@ export function DataSearchTable() {
       if (filters.end_date) queryParams.append("end_date", filters.end_date)
 
       const url = `/api/data-entries${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
-      const response = await fetch(url)
+      const response = await fetch(url, {
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      })
 
       if (!response.ok) {
         throw new Error("Failed to fetch data entries")
       }
 
       const fetchedData = await response.json()
-      setData(fetchedData)
+
+      // データの整合性を確保するための処理を追加
+      const processedData = fetchedData.map((item: DataEntry) => ({
+        ...item,
+        // locationとdepartmentがnullまたはundefinedの場合のデフォルト値を設定
+        location: item.location || { id: 0, name: "未設定", code: "N/A" },
+        department: item.department || { id: 0, name: "未設定", code: "N/A" },
+        emission_factor: item.emission_factor || { id: 0, activity_type: item.activity_type, factor: 0, unit: "N/A" },
+      }))
+
+      setData(processedData)
     } catch (error) {
       console.error("Error fetching data entries:", error)
+      setIsError(true)
       toast({
         title: "エラー",
         description: "データの取得に失敗しました。",
@@ -104,11 +122,11 @@ export function DataSearchTable() {
     return {
       id: `ESG-${item.id}`,
       date: item.entry_date,
-      location: item.location.name,
-      department: item.department.name,
+      location: item.location?.name || "未設定",
+      department: item.department?.name || "未設定",
       activityType: item.activity_type,
       activityAmount: item.activity_amount,
-      emissionFactor: item.emission_factor.factor,
+      emissionFactor: item.emission_factor?.factor || 0,
       emission: item.emission,
       status: item.status,
       submitter: item.submitter,
@@ -121,6 +139,14 @@ export function DataSearchTable() {
       {isLoading ? (
         <div className="flex justify-center items-center h-64">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center h-64 space-y-4">
+          <p className="text-red-500">データの取得中にエラーが発生しました。</p>
+          <Button variant="outline" onClick={() => fetchData(currentFilters)} className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            再試行
+          </Button>
         </div>
       ) : (
         <>
@@ -152,11 +178,11 @@ export function DataSearchTable() {
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">ESG-{item.id}</TableCell>
                       <TableCell>{item.entry_date}</TableCell>
-                      <TableCell>{item.location.name}</TableCell>
-                      <TableCell>{item.department.name}</TableCell>
+                      <TableCell>{item.location?.name || "未設定"}</TableCell>
+                      <TableCell>{item.department?.name || "未設定"}</TableCell>
                       <TableCell>{item.activity_type}</TableCell>
                       <TableCell className="text-right">{item.activity_amount.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">{item.emission_factor.factor}</TableCell>
+                      <TableCell className="text-right">{item.emission_factor?.factor || 0}</TableCell>
                       <TableCell className="text-right">{item.emission.toLocaleString()}</TableCell>
                       <TableCell>{getStatusBadge(item.status)}</TableCell>
                       <TableCell className="text-right">
