@@ -1,165 +1,135 @@
-import { Pool } from "pg"
+import { neon, neonConfig } from "@neondatabase/serverless"
+import { logServerError } from "./error-logger"
 
-// 環境変数からNeon接続情報を取得
-// 推奨される接続文字列を優先的に使用
-const connectionString = process.env.NEON_DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL
-
-// 接続プールの作成
-let pool: Pool | null = null
-
-export function getNeonPool() {
-  if (!pool) {
-    if (!connectionString) {
-      throw new Error("Database connection string not found in environment variables")
-    }
-
-    pool = new Pool({
-      connectionString,
-      ssl: {
-        rejectUnauthorized: true, // 本番環境では安全な接続を使用
-      },
-      // コネクションプールの設定
-      max: 20, // 最大接続数
-      idleTimeoutMillis: 30000, // アイドル接続のタイムアウト
-      connectionTimeoutMillis: 5000, // 接続タイムアウト
-    })
-
-    // 接続エラーハンドリング
-    pool.on("error", (err) => {
-      console.error("Unexpected error on idle client", err)
-      // 致命的なエラーの場合のみプロセスを終了
-      if (err.code === "PROTOCOL_CONNECTION_LOST") {
-        console.error("Database connection was closed. Attempting to reconnect...")
-        pool = null // 再接続のために接続をリセット
-      }
-    })
+// 環境変数の優先順位: NEON_DATABASE_URL > DATABASE_URL > その他のNeon関連環境変数
+const getDatabaseUrl = () => {
+  if (process.env.NEON_DATABASE_URL) {
+    return process.env.NEON_DATABASE_URL
   }
 
-  return pool
-}
-
-// 非プール接続用の関数（必要な場合）
-export function getNeonUnpooledPool() {
-  const unpooledConnectionString = process.env.DATABASE_URL_UNPOOLED || process.env.POSTGRES_URL_NON_POOLING
-
-  if (!unpooledConnectionString) {
-    throw new Error("Unpooled database connection string not found in environment variables")
+  if (process.env.DATABASE_URL) {
+    return process.env.DATABASE_URL
   }
 
-  return new Pool({
-    connectionString: unpooledConnectionString,
-    ssl: {
-      rejectUnauthorized: true,
-    },
-    max: 1, // 非プール接続は1つの接続のみ
-  })
+  // その他のNeon関連環境変数がある場合
+  if (
+    process.env.NEON_PGHOST &&
+    process.env.NEON_PGUSER &&
+    process.env.NEON_PGPASSWORD &&
+    process.env.NEON_PGDATABASE
+  ) {
+    return `postgres://${process.env.NEON_PGUSER}:${process.env.NEON_PGPASSWORD}@${process.env.NEON_PGHOST}/${process.env.NEON_PGDATABASE}`
+  }
+
+  return null
 }
 
-// 接続テスト用の関数
-export async function testNeonConnection() {
+// データベースURLの取得
+const DATABASE_URL = getDatabaseUrl()
+
+// Neon設定
+neonConfig.fetchConnectionCache = true
+
+// SQLクライアントの初期化
+let sqlClient: ReturnType<typeof neon> | null = null
+
+/**
+ * SQLクライアントを取得する関数
+ * @returns SQLクライアント
+ */
+function getSqlClient() {
+  if (!sqlClient && DATABASE_URL) {
+    sqlClient = neon(DATABASE_URL)
+  }
+  return sqlClient
+}
+
+/**
+ * SQLクエリを実行する関数
+ * @param query SQLクエリ
+ * @param params クエリパラメータ
+ * @returns クエリ結果
+ */
+export async function executeQuery(query: string, params: any[] = []) {
   try {
-    const pool = getNeonPool()
-    const client = await pool.connect()
-
-    try {
-      const result = await client.query(
-        "SELECT NOW() as current_time, current_database() as database_name, version() as pg_version",
-      )
-
-      // 環境変数情報（機密情報を除く）
-      const envInfo = {
-        database_url: process.env.DATABASE_URL ? "設定済み" : "未設定",
-        postgres_url: process.env.POSTGRES_URL ? "設定済み" : "未設定",
-        database_url_unpooled: process.env.DATABASE_URL_UNPOOLED ? "設定済み" : "未設定",
-        postgres_url_non_pooling: process.env.POSTGRES_URL_NON_POOLING ? "設定済み" : "未設定",
-        pg_host: process.env.PGHOST ? "設定済み" : "未設定",
-        pg_database: process.env.PGDATABASE ? "設定済み" : "未設定",
-        pg_user: process.env.PGUSER ? "設定済み" : "未設定",
-      }
-
+    // データベースURLが設定されているか確認
+    if (!DATABASE_URL) {
+      console.error("Database URL is not set")
       return {
-        success: true,
-        database: result.rows[0].database_name,
-        currentTime: result.rows[0].current_time,
-        pgVersion: result.rows[0].pg_version,
-        message: "Successfully connected to Neon database",
-        environmentVariables: envInfo,
+        success: false,
+        error: "Database URL is not set. Please check your environment variables.",
+        data: null,
       }
-    } finally {
-      client.release()
     }
-  } catch (error) {
-    console.error("Neon connection test failed:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-      stack: error instanceof Error ? error.stack : undefined,
-      environmentVariables: {
-        database_url: process.env.DATABASE_URL ? "設定済み" : "未設定",
-        postgres_url: process.env.POSTGRES_URL ? "設定済み" : "未設定",
-        database_url_unpooled: process.env.DATABASE_URL_UNPOOLED ? "設定済み" : "未設定",
-        postgres_url_non_pooling: process.env.POSTGRES_URL_NON_POOLING ? "設定済み" : "未設定",
-      },
-    }
-  }
-}
 
-// クエリ実行用のヘルパー関数
-export async function executeQuery<T = any>(
-  query: string,
-  params: any[] = [],
-): Promise<{
-  success: boolean
-  data?: T[]
-  error?: string
-  rowCount?: number
-}> {
-  const pool = getNeonPool()
-  try {
-    const result = await pool.query(query, params)
-    return {
-      success: true,
-      data: result.rows,
-      rowCount: result.rowCount,
-    }
-  } catch (error) {
-    console.error("Query execution error:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    }
-  }
-}
+    console.log(`Executing query: ${query.substring(0, 100)}...`)
 
-// トランザクション実行用のヘルパー関数
-export async function executeTransaction<T = any>(
-  callback: (client: any) => Promise<T>,
-): Promise<{
-  success: boolean
-  data?: T
-  error?: string
-}> {
-  const pool = getNeonPool()
-  const client = await pool.connect()
+    // SQLクライアントの取得
+    const sql = getSqlClient()
 
-  try {
-    await client.query("BEGIN")
-    const result = await callback(client)
-    await client.query("COMMIT")
+    if (!sql) {
+      return {
+        success: false,
+        error: "Failed to initialize SQL client",
+        data: null,
+      }
+    }
+
+    // クエリの実行 - 修正: sql.query メソッドを使用
+    const result = await sql.query(query, params)
 
     return {
       success: true,
       data: result,
+      error: null,
     }
   } catch (error) {
-    await client.query("ROLLBACK")
-    console.error("Transaction error:", error)
+    // エラーログの記録
+    await logServerError(error, { query, params })
 
+    console.error("Error executing query:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown database error",
+      data: null,
+    }
+  }
+}
+
+/**
+ * データベース接続が初期化されているかどうかを確認する関数
+ * @returns データベース接続が初期化されているかどうか
+ */
+export function isDatabaseInitialized() {
+  return Boolean(DATABASE_URL)
+}
+
+export async function testNeonConnection() {
+  try {
+    if (!DATABASE_URL) {
+      return {
+        success: false,
+        error: "Database URL is not set",
+      }
+    }
+
+    const result = await executeQuery("SELECT 1 as test")
+
+    if (!result.success) {
+      return {
+        success: false,
+        error: result.error,
+      }
+    }
+
+    return {
+      success: true,
+      message: "Neon connection successful",
+    }
+  } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
     }
-  } finally {
-    client.release()
   }
 }

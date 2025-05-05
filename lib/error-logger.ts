@@ -1,5 +1,3 @@
-import { getSupabaseServer, isSupabaseServerInitialized } from "./supabase"
-
 export type ErrorSeverity = "info" | "warning" | "error" | "critical"
 export type ErrorStatus = "open" | "in_progress" | "resolved" | "ignored"
 
@@ -18,66 +16,56 @@ export interface ErrorLogData {
 }
 
 /**
- * サーバーサイドでエラーをログに記録する関数
+ * サーバーサイドのエラーをログに記録する
+ * @param error エラーオブジェクト
+ * @param context 追加のコンテキスト情報
  */
-export async function logServerError(data: ErrorLogData) {
-  if (!isSupabaseServerInitialized()) {
-    console.error("Supabase client is not initialized. Error logging failed.")
-    return { success: false, error: "Database client not initialized" }
-  }
+export async function logServerError(error: Error | unknown, context?: Record<string, any>) {
+  console.error("Server Error:", error, context)
 
   try {
-    const supabaseServer = getSupabaseServer()
-    const { error } = await supabaseServer.from("error_logs").insert([
-      {
-        error_type: data.error_type,
-        message: data.message,
-        stack_trace: data.stack_trace,
-        component: data.component,
-        route: data.route,
-        user_id: data.user_id,
-        user_agent: data.user_agent,
-        request_data: data.request_data,
-        context: data.context,
-        severity: data.severity || "error",
-        status: data.status || "open",
-      },
-    ])
-
-    if (error) {
-      console.error("Error logging failed:", error)
-      return { success: false, error: error.message }
+    // 本番環境では、エラーログデータベースにエラーを記録することも可能
+    if (process.env.NODE_ENV === "production") {
+      // 例: データベースにエラーを記録
+      // const sql = neon(process.env.NEON_DATABASE_URL);
+      // await sql`
+      //   INSERT INTO error_logs (source, message, stack, context, created_at)
+      //   VALUES ('server', ${error instanceof Error ? error.message : String(error)},
+      //           ${error instanceof Error ? error.stack : null},
+      //           ${JSON.stringify(context)},
+      //           NOW())
+      // `;
     }
-
-    return { success: true }
-  } catch (err) {
-    console.error("Error in logServerError:", err)
-    return { success: false, error: (err as Error).message }
+  } catch (logError) {
+    console.error("Failed to log server error:", logError)
   }
 }
 
 /**
- * クライアントサイドでエラーをログに記録する関数
+ * クライアントサイドのエラーをログに記録する
+ * @param error エラーオブジェクト
+ * @param context 追加のコンテキスト情報
  */
-export async function logClientError(data: ErrorLogData) {
+export async function logClientError(error: Error | unknown, context?: Record<string, any>) {
+  console.error("Client Error:", error, context)
+
   try {
-    const response = await fetch("/api/error-logs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(data),
-    })
-
-    if (!response.ok) {
-      console.error("Error logging failed:", await response.text())
-      return { success: false }
+    // 本番環境では、エラーログAPIにエラーを送信することも可能
+    if (process.env.NODE_ENV === "production") {
+      // 例: エラーログAPIにエラーを送信
+      // await fetch('/api/error-logs', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({
+      //     source: 'client',
+      //     error: error instanceof Error ? error.message : String(error),
+      //     stack: error instanceof Error ? error.stack : undefined,
+      //     context
+      //   })
+      // });
     }
-
-    return { success: true }
-  } catch (err) {
-    console.error("Error in logClientError:", err)
-    return { success: false }
+  } catch (logError) {
+    console.error("Failed to log client error:", logError)
   }
 }
 

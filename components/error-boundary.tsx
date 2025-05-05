@@ -1,7 +1,6 @@
 "use client"
 
 import { Component, type ErrorInfo, type ReactNode } from "react"
-import { logClientError } from "@/lib/error-logger"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
@@ -29,18 +28,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // エラーログを記録
-    logClientError({
-      error_type: error.name,
-      message: error.message,
-      stack_trace: error.stack,
-      component: this.props.componentName || "unknown",
-      context: {
-        componentStack: errorInfo.componentStack,
-      },
-    }).catch((err) => {
-      console.error("Failed to log error:", err)
-    })
+    // エラーをコンソールに出力
+    console.error("Error caught by ErrorBoundary:", error, errorInfo)
   }
 
   render() {

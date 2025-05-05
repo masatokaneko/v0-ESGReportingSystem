@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect } from "react"
-import { logClientError } from "@/lib/error-logger"
 import { usePathname } from "next/navigation"
 
 export function useGlobalErrorHandler() {
@@ -10,35 +9,16 @@ export function useGlobalErrorHandler() {
   useEffect(() => {
     // 未処理のPromiseエラーをキャプチャ
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      logClientError({
-        error_type: "UnhandledPromiseRejection",
-        message: event.reason?.message || "Unknown promise rejection",
-        stack_trace: event.reason?.stack,
-        route: pathname,
-        user_agent: navigator.userAgent,
-        context: {
-          reason: event.reason,
-        },
-      }).catch((err) => {
-        console.error("Failed to log unhandled rejection:", err)
-      })
+      console.error("Unhandled Promise Rejection:", event.reason)
     }
 
     // グローバルなエラーをキャプチャ
     const handleError = (event: ErrorEvent) => {
-      logClientError({
-        error_type: "GlobalError",
-        message: event.message || "Unknown error",
-        stack_trace: event.error?.stack,
-        route: pathname,
-        user_agent: navigator.userAgent,
-        context: {
-          filename: event.filename,
-          lineno: event.lineno,
-          colno: event.colno,
-        },
-      }).catch((err) => {
-        console.error("Failed to log global error:", err)
+      console.error("Global Error:", event.message, {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error,
       })
     }
 

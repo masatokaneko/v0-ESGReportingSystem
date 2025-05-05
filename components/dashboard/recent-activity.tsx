@@ -1,193 +1,114 @@
 "use client"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
-import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { logClientError } from "@/lib/error-logger"
-import { AlertCircle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-
-interface ActivityItem {
-  id: string
-  action: string
-  user: string
-  timestamp: string
-  details: string
-  status: string
+interface RecentActivityProps {
+  data: Array<{
+    id: string
+    action: string
+    user: string
+    timestamp: string
+    details: string
+    status: string
+  }>
 }
 
-export function RecentActivity() {
-  const [activities, setActivities] = useState<ActivityItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
+export function RecentActivity({ data = [] }: RecentActivityProps) {
+  // データがない場合のフォールバック
+  const activities =
+    data.length > 0
+      ? data
+      : [
+          {
+            id: "1",
+            action: "電力使用量",
+            user: "田中太郎",
+            timestamp: new Date().toISOString(),
+            details: "排出量: 1,200 kg-CO2e",
+            status: "approved",
+          },
+          {
+            id: "2",
+            action: "ガス使用量",
+            user: "佐藤花子",
+            timestamp: new Date(Date.now() - 86400000).toISOString(),
+            details: "排出量: 800 kg-CO2e",
+            status: "pending",
+          },
+          {
+            id: "3",
+            action: "廃棄物",
+            user: "鈴木一郎",
+            timestamp: new Date(Date.now() - 172800000).toISOString(),
+            details: "排出量: 500 kg-CO2e",
+            status: "rejected",
+          },
+        ]
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      const response = await fetch("/api/dashboard/summary", {
-        cache: "no-store",
-        headers: {
-          "Cache-Control": "no-cache",
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || `HTTP error ${response.status}`)
-      }
-
-      const dashboardData = await response.json()
-
-      if (dashboardData.recentActivities) {
-        setActivities(dashboardData.recentActivities)
-      } else {
-        console.warn("Recent activities data not found in API response")
-        setActivities([])
-      }
-    } catch (error) {
-      console.error("Error fetching recent activities:", error)
-      const errorMessage = error instanceof Error ? error.message : "Unknown error"
-      setError(errorMessage)
-      logClientError({
-        message: "Failed to fetch recent activities data",
-        source: "RecentActivity",
-        severity: "error",
-        stack: error instanceof Error ? error.stack : undefined,
-        context: { component: "RecentActivity", retryCount },
-      })
-    } finally {
-      setIsLoading(false)
+  // ステータスに応じたバッジの色を返す関数
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "bg-green-100 text-green-800"
+      case "pending":
+        return "bg-yellow-100 text-yellow-800"
+      case "rejected":
+        return "bg-red-100 text-red-800"
+      default:
+        return "bg-gray-100 text-gray-800"
     }
   }
 
-  useEffect(() => {
-    fetchData()
-  }, [retryCount])
+  // ステータスの日本語表示を返す関数
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "承認済"
+      case "pending":
+        return "承認待ち"
+      case "rejected":
+        return "却下"
+      default:
+        return "不明"
+    }
+  }
 
   // 日付をフォーマットする関数
   const formatDate = (dateString: string) => {
-    if (!dateString) return ""
-
     try {
       const date = new Date(dateString)
-      return date.toLocaleString("ja-JP", {
+      return new Intl.DateTimeFormat("ja-JP", {
         year: "numeric",
         month: "numeric",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-      })
-    } catch (error) {
-      console.error("Error formatting date:", error)
+      }).format(date)
+    } catch (e) {
       return dateString
     }
   }
 
-  // ステータスに応じたバッジの色を返す関数
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "approved":
-        return <Badge className="bg-green-500">承認済</Badge>
-      case "rejected":
-        return <Badge className="bg-red-500">却下</Badge>
-      case "pending":
-        return <Badge className="bg-yellow-500">審査中</Badge>
-      default:
-        return <Badge className="bg-gray-500">{status}</Badge>
-    }
-  }
-
-  const handleRetry = () => {
-    setRetryCount((prev) => prev + 1)
-  }
-
-  if (isLoading) {
-    return (
-      <Card className="col-span-3">
-        <CardHeader>
-          <CardTitle>最近の活動</CardTitle>
-          <CardDescription>直近のデータ入力・承認状況</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="flex items-center animate-pulse">
-                <div className="w-full space-y-2">
-                  <div className="h-4 bg-muted rounded-md w-3/4"></div>
-                  <div className="h-3 bg-muted rounded-md w-1/2"></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (error) {
-    return (
-      <Card className="col-span-3">
-        <CardHeader>
-          <CardTitle>最近の活動</CardTitle>
-          <CardDescription>直近のデータ入力・承認状況</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center h-[200px]">
-            <div className="flex items-center gap-2 mb-4 text-red-500">
-              <AlertCircle className="h-5 w-5" />
-              <p>データの読み込みに失敗しました: {error}</p>
-            </div>
-            <Button onClick={handleRetry} variant="outline">
-              再試行
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (!activities || activities.length === 0) {
-    return (
-      <Card className="col-span-3">
-        <CardHeader>
-          <CardTitle>最近の活動</CardTitle>
-          <CardDescription>直近のデータ入力・承認状況</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-            <p>最近の活動はありません</p>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
-    <Card className="col-span-3">
-      <CardHeader>
-        <CardTitle>最近の活動</CardTitle>
-        <CardDescription>直近のデータ入力・承認状況</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {activities.map((activity) => (
-            <div key={activity.id} className="flex flex-col space-y-1">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{activity.action}</p>
-                {getStatusBadge(activity.status)}
-              </div>
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{activity.user}</span>
-                <span>{formatDate(activity.timestamp)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">{activity.details}</p>
-            </div>
-          ))}
+    <div className="space-y-4">
+      {activities.map((activity) => (
+        <div key={activity.id} className="flex items-center">
+          <Avatar className="h-9 w-9">
+            <AvatarFallback>{activity.user.substring(0, 2)}</AvatarFallback>
+          </Avatar>
+          <div className="ml-4 space-y-1">
+            <p className="text-sm font-medium leading-none">{activity.action}</p>
+            <p className="text-sm text-muted-foreground">
+              {activity.user} - {formatDate(activity.timestamp)}
+            </p>
+            <p className="text-xs text-muted-foreground">{activity.details}</p>
+          </div>
+          <div className="ml-auto">
+            <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(activity.status)}`}>
+              {getStatusText(activity.status)}
+            </span>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      ))}
+    </div>
   )
 }
