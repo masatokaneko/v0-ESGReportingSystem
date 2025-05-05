@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 import { logClientError } from "@/lib/error-logger"
 import { AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -23,6 +23,7 @@ export function EmissionsTrend() {
       setIsLoading(true)
       setError(null)
 
+      console.log("Fetching emissions trend data...")
       const response = await fetch("/api/dashboard/summary", {
         cache: "no-store",
         headers: {
@@ -31,16 +32,43 @@ export function EmissionsTrend() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || `HTTP error ${response.status}`)
+        const errorText = await response.text()
+        let errorMessage = `HTTP error ${response.status}`
+
+        try {
+          const errorData = JSON.parse(errorText)
+          if (errorData.message) {
+            errorMessage = errorData.message
+          }
+        } catch (e) {
+          // テキストをそのまま使用
+          if (errorText) {
+            errorMessage = errorText
+          }
+        }
+
+        throw new Error(errorMessage)
       }
 
       const dashboardData = await response.json()
+      console.log("Dashboard data received:", dashboardData)
 
-      if (dashboardData.emissionsTrend) {
-        setData(dashboardData.emissionsTrend)
+      if (dashboardData.emissionsTrend && Array.isArray(dashboardData.emissionsTrend)) {
+        // 月名を日本語に変換する関数
+        const formatMonth = (monthStr: string) => {
+          const [year, month] = monthStr.split("-")
+          return `${year}年${month}月`
+        }
+
+        // データを整形
+        const formattedData = dashboardData.emissionsTrend.map((item: any) => ({
+          month: formatMonth(item.month),
+          emissions: Number(item.emissions) || 0,
+        }))
+
+        setData(formattedData)
       } else {
-        console.warn("Emissions trend data not found in API response")
+        console.warn("Emissions trend data not found or not an array:", dashboardData.emissionsTrend)
         setData([])
       }
     } catch (error) {
@@ -63,29 +91,16 @@ export function EmissionsTrend() {
     fetchData()
   }, [retryCount])
 
-  // 月名を日本語に変換する関数
-  const formatMonth = (monthYear: string) => {
-    if (!monthYear) return ""
-
-    try {
-      const [year, month] = monthYear.split("-")
-      return `${year}年${Number.parseInt(month)}月`
-    } catch (error) {
-      console.error("Error formatting month:", error)
-      return monthYear
-    }
-  }
-
   const handleRetry = () => {
     setRetryCount((prev) => prev + 1)
   }
 
   if (isLoading) {
     return (
-      <Card className="col-span-4">
+      <Card>
         <CardHeader>
-          <CardTitle>月別排出量推移</CardTitle>
-          <CardDescription>過去12ヶ月の排出量推移</CardDescription>
+          <CardTitle>排出量トレンド</CardTitle>
+          <CardDescription>月別の排出量推移</CardDescription>
         </CardHeader>
         <CardContent className="h-[300px] flex items-center justify-center">
           <div className="w-full h-full animate-pulse bg-muted rounded-md"></div>
@@ -96,13 +111,13 @@ export function EmissionsTrend() {
 
   if (error) {
     return (
-      <Card className="col-span-4">
+      <Card>
         <CardHeader>
-          <CardTitle>月別排出量推移</CardTitle>
-          <CardDescription>過去12ヶ月の排出量推移</CardDescription>
+          <CardTitle>排出量トレンド</CardTitle>
+          <CardDescription>月別の排出量推移</CardDescription>
         </CardHeader>
-        <CardContent className="h-[300px] flex flex-col items-center justify-center text-red-500">
-          <div className="flex items-center gap-2 mb-4">
+        <CardContent className="h-[300px] flex flex-col items-center justify-center">
+          <div className="flex items-center gap-2 mb-4 text-red-500">
             <AlertCircle className="h-5 w-5" />
             <p>データの読み込みに失敗しました: {error}</p>
           </div>
@@ -116,10 +131,10 @@ export function EmissionsTrend() {
 
   if (!data || data.length === 0) {
     return (
-      <Card className="col-span-4">
+      <Card>
         <CardHeader>
-          <CardTitle>月別排出量推移</CardTitle>
-          <CardDescription>過去12ヶ月の排出量推移</CardDescription>
+          <CardTitle>排出量トレンド</CardTitle>
+          <CardDescription>月別の排出量推移</CardDescription>
         </CardHeader>
         <CardContent className="h-[300px] flex items-center justify-center text-muted-foreground">
           <p>データがありません</p>
@@ -128,41 +143,29 @@ export function EmissionsTrend() {
     )
   }
 
-  // データを日付順にソート
-  const sortedData = [...data].sort((a, b) => {
-    return new Date(a.month).getTime() - new Date(b.month).getTime()
-  })
-
-  // 月名を日本語に変換したデータを作成
-  const formattedData = sortedData.map((item) => ({
-    ...item,
-    formattedMonth: formatMonth(item.month),
-  }))
-
   return (
-    <Card className="col-span-4">
+    <Card>
       <CardHeader>
-        <CardTitle>月別排出量推移</CardTitle>
-        <CardDescription>過去12ヶ月の排出量推移</CardDescription>
+        <CardTitle>排出量トレンド</CardTitle>
+        <CardDescription>月別の排出量推移</CardDescription>
       </CardHeader>
       <CardContent className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            data={formattedData}
+          <AreaChart
+            data={data}
             margin={{
-              top: 5,
+              top: 10,
               right: 30,
-              left: 20,
-              bottom: 5,
+              left: 0,
+              bottom: 0,
             }}
           >
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="formattedMonth" />
+            <XAxis dataKey="month" />
             <YAxis />
-            <Tooltip formatter={(value) => [`${value.toLocaleString()} kg-CO2e`, "排出量"]} />
-            <Legend />
-            <Bar dataKey="emissions" name="排出量" fill="#8884d8" />
-          </BarChart>
+            <Tooltip formatter={(value) => `${Number(value).toLocaleString()} kg-CO2e`} />
+            <Area type="monotone" dataKey="emissions" stroke="#8884d8" fill="#8884d8" />
+          </AreaChart>
         </ResponsiveContainer>
       </CardContent>
     </Card>

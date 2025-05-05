@@ -25,6 +25,7 @@ export function EmissionsBySource() {
       setIsLoading(true)
       setError(null)
 
+      console.log("Fetching emissions by source data...")
       const response = await fetch("/api/dashboard/summary", {
         cache: "no-store",
         headers: {
@@ -33,16 +34,36 @@ export function EmissionsBySource() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || `HTTP error ${response.status}`)
+        const errorText = await response.text()
+        let errorMessage = `HTTP error ${response.status}`
+
+        try {
+          const errorData = JSON.parse(errorText)
+          if (errorData.message) {
+            errorMessage = errorData.message
+          }
+        } catch (e) {
+          // テキストをそのまま使用
+          if (errorText) {
+            errorMessage = errorText
+          }
+        }
+
+        throw new Error(errorMessage)
       }
 
       const dashboardData = await response.json()
+      console.log("Dashboard data received:", dashboardData)
 
-      if (dashboardData.emissionsBySource) {
-        setData(dashboardData.emissionsBySource)
+      if (dashboardData.emissionsBySource && Array.isArray(dashboardData.emissionsBySource)) {
+        // 値が数値であることを確認
+        const formattedData = dashboardData.emissionsBySource.map((item: any) => ({
+          name: item.name || "不明",
+          value: typeof item.value === "number" ? item.value : Number.parseFloat(item.value) || 0,
+        }))
+        setData(formattedData)
       } else {
-        console.warn("Emissions by source data not found in API response")
+        console.warn("Emissions by source data not found or not an array:", dashboardData.emissionsBySource)
         setData([])
       }
     } catch (error) {
@@ -140,7 +161,7 @@ export function EmissionsBySource() {
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip formatter={(value) => `${value.toLocaleString()} kg-CO2e`} />
+            <Tooltip formatter={(value) => `${Number(value).toLocaleString()} kg-CO2e`} />
             <Legend />
           </PieChart>
         </ResponsiveContainer>

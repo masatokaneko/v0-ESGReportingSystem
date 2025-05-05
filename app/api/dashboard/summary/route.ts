@@ -1,90 +1,145 @@
 import { NextResponse } from "next/server"
 import { executeQuery } from "@/lib/neon"
-import { logDatabaseConnectionError } from "@/lib/db-error-logger"
 
 export async function GET() {
   try {
+    console.log("Dashboard summary API called")
+
     // 総排出量
-    const totalEmissionsQuery = `
-      SELECT COALESCE(SUM(emission), 0) as total_emissions
+    const totalEmissionQuery = `
+      SELECT COALESCE(SUM(emission), 0) as total_emission
       FROM data_entries
       WHERE status = 'approved'
     `
-    const totalEmissionsResult = await executeQuery(totalEmissionsQuery)
+    const totalEmissionResult = await executeQuery(totalEmissionQuery)
 
-    // 活動タイプ別の排出量
-    const emissionsBySourceQuery = `
-      SELECT activity_type, COALESCE(SUM(emission), 0) as total
+    if (!totalEmissionResult.success) {
+      console.error("Error fetching total emission:", totalEmissionResult.error)
+      throw new Error(`Failed to fetch total emission: ${totalEmissionResult.error}`)
+    }
+
+    // スコープ別データの集計（仮のデータ）
+    const totalEmission = Number(totalEmissionResult.data?.[0]?.total_emission || 0)
+    const scopeData = {
+      scope1: Number((totalEmission * 0.3).toFixed(2)),
+      scope2: Number((totalEmission * 0.4).toFixed(2)),
+      scope3: Number((totalEmission * 0.3).toFixed(2)),
+    }
+
+    // 排出源別データの取得
+    const sourceQuery = `
+      SELECT 
+        activity_type as name,
+        COALESCE(SUM(emission), 0) as value
       FROM data_entries
       WHERE status = 'approved'
       GROUP BY activity_type
-      ORDER BY total DESC
+      ORDER BY value DESC
     `
-    const emissionsBySourceResult = await executeQuery(emissionsBySourceQuery)
+    const sourceResult = await executeQuery(sourceQuery)
 
-    // 月別の排出量トレンド（過去12ヶ月）
-    const emissionsTrendQuery = `
+    if (!sourceResult.success) {
+      console.error("Error fetching emissions by source:", sourceResult.error)
+      throw new Error(`Failed to fetch emissions by source: ${sourceResult.error}`)
+    }
+
+    // 数値型に変換して確実に正しい形式にする
+    const emissionsBySource = (sourceResult.data || []).map((item) => ({
+      name: item.name || "不明",
+      value: Number(item.value) || 0,
+    }))
+
+    // 月別排出量トレンドの取得
+    const trendQuery = `
       SELECT 
-        DATE_TRUNC('month', entry_date) as month,
-        COALESCE(SUM(emission), 0) as total
+        TO_CHAR(entry_date, 'YYYY-MM') as month,
+        COALESCE(SUM(emission), 0) as emissions
       FROM data_entries
       WHERE 
         status = 'approved' AND
-        entry_date >= DATE_TRUNC('month', NOW()) - INTERVAL '11 months'
+        entry_date >= CURRENT_DATE - INTERVAL '12 months'
       GROUP BY month
       ORDER BY month
     `
-    const emissionsTrendResult = await executeQuery(emissionsTrendQuery)
+    const trendResult = await executeQuery(trendQuery)
 
-    // 最近の活動
-    const recentActivityQuery = `
-      SELECT 
-        de.id,
-        de.entry_date,
-        de.activity_type,
-        de.activity_amount,
-        de.emission,
-        de.status,
-        de.created_at,
-        l.name as location_name,
-        d.name as department_name
-      FROM data_entries de
-      LEFT JOIN locations l ON de.location_id = l.id
-      LEFT JOIN departments d ON de.department_id = d.id
-      ORDER BY de.created_at DESC
-      LIMIT 10
-    `
-    const recentActivityResult = await executeQuery(recentActivityQuery)
-
-    // 承認待ちの件数
-    const pendingApprovalQuery = `
-      SELECT COUNT(*) as count
-      FROM data_entries
-      WHERE status = 'pending'
-    `
-    const pendingApprovalResult = await executeQuery(pendingApprovalQuery)
-
-    if (
-      !totalEmissionsResult.success ||
-      !emissionsBySourceResult.success ||
-      !emissionsTrendResult.success ||
-      !recentActivityResult.success ||
-      !pendingApprovalResult.success
-    ) {
-      const error = new Error("One or more dashboard queries failed")
-      await logDatabaseConnectionError(error, { endpoint: "/api/dashboard/summary" })
-      return NextResponse.json({ error: "Failed to fetch dashboard data" }, { status: 500 })
+    if (!trendResult.success) {
+      console.error("Error fetching emissions trend:", trendResult.error)
+      throw new Error(`Failed to fetch emissions trend: ${trendResult.error}`)
     }
 
-    return NextResponse.json({
-      totalEmissions: totalEmissionsResult.data?.[0]?.total_emissions || 0,
-      emissionsBySource: emissionsBySourceResult.data || [],
-      emissionsTrend: emissionsTrendResult.data || [],
-      recentActivity: recentActivityResult.data || [],
-      pendingApprovalCount: pendingApprovalResult.data?.[0]?.count || 0,
-    })
+    // 数値型に変換
+    const emissionsTrend = (trendResult.data || []).map((item) => ({
+      month: item.month,
+      emissions: Number(item.emissions) || 0,
+    }))
+
+    // 最近のアクティビティの取得
+    const activityQuery = `
+      SELECT 
+        id,
+        activity_type,
+        submitter,
+        status,
+        emission,
+        updated_at as timestamp
+      FROM data_entries
+      ORDER BY updated_at DESC
+      LIMIT 5
+    `
+    const activityResult = await executeQuery(activityQuery)
+
+    if (!activityResult.success) {
+      console.error("Error fetching recent activities:", activityResult.error)
+      throw new Error(`Failed to fetch recent activities: ${activityResult.error}`)
+    }
+
+    const recentActivities = (activityResult.data || []).map((entry) => ({
+      id: entry.id,
+      action: entry.activity_type || "データ",
+      user: entry.submitter || "システム",
+      timestamp: entry.timestamp,
+      details: `排出量: ${Number(entry.emission) || 0} kg-CO2e`,
+      status: entry.status,
+    }))
+
+    // レスポンスの構築
+    return NextResponse.json(
+      {
+        totalEmission,
+        scopeData,
+        emissionsBySource,
+        emissionsTrend,
+        recentActivities,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
+    )
   } catch (error) {
-    await logDatabaseConnectionError(error as Error, { endpoint: "/api/dashboard/summary" })
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    console.error("Error in dashboard summary API:", error)
+    return NextResponse.json(
+      {
+        error: "Failed to fetch dashboard data",
+        message: error instanceof Error ? error.message : "Unknown error",
+        totalEmission: 0,
+        scopeData: {
+          scope1: 0,
+          scope2: 0,
+          scope3: 0,
+        },
+        emissionsBySource: [],
+        emissionsTrend: [],
+        recentActivities: [],
+      },
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
+    )
   }
 }
