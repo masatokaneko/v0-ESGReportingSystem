@@ -96,17 +96,50 @@ export const getSupabaseServer = () => {
 
     throw new Error(errorMessage)
   }
+
+  // 接続テスト
   return supabaseServer
 }
 
-// PostgreSQL接続情報を取得するヘルパー関数（必要に応じて使用）
-export const getPostgresConnectionInfo = () => {
-  return {
-    host: process.env.POSTGRES_HOST,
-    database: process.env.POSTGRES_DATABASE,
-    user: process.env.POSTGRES_USER,
-    password: process.env.POSTGRES_PASSWORD,
-    url: process.env.POSTGRES_URL,
-    urlNonPooling: process.env.POSTGRES_URL_NON_POOLING,
+// 接続テスト用の関数
+export async function testSupabaseConnection() {
+  try {
+    if (!supabaseServer) {
+      return {
+        success: false,
+        error: "Supabase client not initialized",
+        details: {
+          url: !!supabaseUrl,
+          anonKey: !!supabaseAnonKey,
+          serviceRoleKey: !!supabaseServiceRoleKey,
+        },
+      }
+    }
+
+    // 簡単なクエリを実行して接続をテスト
+    const { data, error } = await supabaseServer.from("data_entries").select("count()", { count: "exact" }).limit(1)
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message,
+        details: {
+          code: error.code,
+          hint: error.hint,
+          details: error.details,
+        },
+      }
+    }
+
+    return {
+      success: true,
+      data,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack : undefined,
+    }
   }
 }

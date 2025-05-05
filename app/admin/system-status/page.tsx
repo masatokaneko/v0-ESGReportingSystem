@@ -6,12 +6,16 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react"
+import { CheckCircle2, XCircle, AlertTriangle, RefreshCw } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function SystemStatusPage() {
   const [status, setStatus] = useState<any>(null)
+  const [connectionTest, setConnectionTest] = useState<any>(null)
   const [loading, setLoading] = useState(false)
+  const [testLoading, setTestLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("env")
 
   const checkStatus = async () => {
     setLoading(true)
@@ -28,6 +32,23 @@ export default function SystemStatusPage() {
       setError(err instanceof Error ? err.message : "Unknown error occurred")
     } finally {
       setLoading(false)
+    }
+  }
+
+  const testConnection = async () => {
+    setTestLoading(true)
+
+    try {
+      const response = await fetch("/api/debug/connection-test")
+      const data = await response.json()
+      setConnectionTest(data)
+    } catch (err) {
+      setConnectionTest({
+        success: false,
+        error: err instanceof Error ? err.message : "Unknown error occurred",
+      })
+    } finally {
+      setTestLoading(false)
     }
   }
 
@@ -48,110 +69,180 @@ export default function SystemStatusPage() {
     <div className="container mx-auto py-10">
       <h1 className="text-2xl font-bold mb-6">システムステータス</h1>
 
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>環境変数ステータス</CardTitle>
-          <CardDescription>アプリケーションに必要な環境変数の設定状況</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-4">
-              <AlertTitle>エラー</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="env">環境変数</TabsTrigger>
+          <TabsTrigger value="connection">接続テスト</TabsTrigger>
+          <TabsTrigger value="help">ヘルプ</TabsTrigger>
+        </TabsList>
 
-          {loading ? (
-            <div className="flex justify-center py-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            </div>
-          ) : status ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="font-medium">環境変数</div>
-                <div className="font-medium">ステータス</div>
+        <TabsContent value="env">
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>環境変数ステータス</CardTitle>
+              <CardDescription>アプリケーションに必要な環境変数の設定状況</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {error && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertTitle>エラー</AlertTitle>
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-                {Object.entries(status.envStatus).map(([key, value]) => (
-                  <React.Fragment key={key}>
-                    <div className="text-sm">{key}</div>
-                    <div className="flex items-center">
-                      {renderStatusIcon(value as boolean)}
-                      <span className="ml-2">{value ? "設定済み" : "未設定"}</span>
+              {loading ? (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                </div>
+              ) : status ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="font-medium">環境変数</div>
+                    <div className="font-medium">ステータス</div>
+
+                    {Object.entries(status.envStatus).map(([key, value]) => (
+                      <React.Fragment key={key}>
+                        <div className="text-sm">{key}</div>
+                        <div className="flex items-center">
+                          {renderStatusIcon(value as boolean)}
+                          <span className="ml-2">{value ? "設定済み" : "未設定"}</span>
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <h3 className="font-medium mb-2">フォーマットチェック</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {Object.entries(status.formatCheck).map(([key, value]) => (
+                        <React.Fragment key={key}>
+                          <div className="text-sm">{key}</div>
+                          <div className="flex items-center">
+                            {renderStatusIcon(value as boolean)}
+                            <span className="ml-2">{value ? "正しいフォーマット" : "不正なフォーマット"}</span>
+                          </div>
+                        </React.Fragment>
+                      ))}
                     </div>
-                  </React.Fragment>
-                ))}
-              </div>
+                  </div>
 
-              <div className="pt-4 border-t">
-                <h3 className="font-medium mb-2">フォーマットチェック</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {Object.entries(status.formatCheck).map(([key, value]) => (
-                    <React.Fragment key={key}>
-                      <div className="text-sm">{key}</div>
-                      <div className="flex items-center">
-                        {renderStatusIcon(value as boolean)}
-                        <span className="ml-2">{value ? "正しいフォーマット" : "不正なフォーマット"}</span>
-                      </div>
-                    </React.Fragment>
-                  ))}
+                  <div className="pt-4 border-t">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="text-sm">NODE_ENV</div>
+                      <div>{status.nodeEnv}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4">
+                <Button onClick={checkStatus} disabled={loading}>
+                  {loading ? "チェック中..." : "再チェック"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="connection">
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>データベース接続テスト</CardTitle>
+              <CardDescription>Supabaseへの接続状態を確認します</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Button onClick={testConnection} disabled={testLoading} className="flex items-center gap-2">
+                  {testLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      テスト中...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      接続テスト実行
+                    </>
+                  )}
+                </Button>
+
+                {connectionTest && (
+                  <div className="mt-4">
+                    <Alert variant={connectionTest.success ? "default" : "destructive"}>
+                      <AlertTitle>{connectionTest.success ? "接続成功" : "接続エラー"}</AlertTitle>
+                      <AlertDescription>
+                        {connectionTest.success ? (
+                          "Supabaseへの接続に成功しました。"
+                        ) : (
+                          <div className="space-y-2">
+                            <p>エラー: {connectionTest.error}</p>
+                            {connectionTest.details && (
+                              <pre className="bg-gray-100 p-2 rounded text-xs overflow-auto">
+                                {JSON.stringify(connectionTest.details, null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        )}
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="help">
+          <Card>
+            <CardHeader>
+              <CardTitle>環境変数の設定方法</CardTitle>
+              <CardDescription>環境変数が未設定の場合は、以下の手順で設定してください</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium mb-2">開発環境での設定</h3>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>
+                      プロジェクトのルートディレクトリに <code>.env.local</code> ファイルを作成
+                    </li>
+                    <li>
+                      以下の環境変数を設定:
+                      <pre className="bg-gray-100 p-2 mt-2 rounded">
+                        NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+                        <br />
+                        NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...（あなたのanon keyをここに）
+                        <br />
+                        SUPABASE_SERVICE_ROLE_KEY=eyJ...（あなたのservice role keyをここに）
+                      </pre>
+                    </li>
+                    <li>開発サーバーを再起動</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">本番環境での設定</h3>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>ホスティングプラットフォーム（Vercelなど）の環境変数設定ページにアクセス</li>
+                    <li>上記の3つの環境変数を追加</li>
+                    <li>アプリケーションを再デプロイ</li>
+                  </ol>
+                </div>
+
+                <div>
+                  <h3 className="font-medium mb-2">403エラーの解決方法</h3>
+                  <ol className="list-decimal list-inside space-y-2">
+                    <li>Supabaseダッシュボードで、プロジェクトの設定を確認</li>
+                    <li>API設定で、RLS（Row Level Security）の設定を確認</li>
+                    <li>サービスロールキーが有効であることを確認</li>
+                    <li>IPアドレス制限が設定されている場合は、Vercelのデプロイ先IPを許可リストに追加</li>
+                  </ol>
                 </div>
               </div>
-
-              <div className="pt-4 border-t">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-sm">NODE_ENV</div>
-                  <div>{status.nodeEnv}</div>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="mt-4">
-            <Button onClick={checkStatus} disabled={loading}>
-              {loading ? "チェック中..." : "再チェック"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>環境変数の設定方法</CardTitle>
-          <CardDescription>環境変数が未設定の場合は、以下の手順で設定してください</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <h3 className="font-medium mb-2">開発環境での設定</h3>
-              <ol className="list-decimal list-inside space-y-2">
-                <li>
-                  プロジェクトのルートディレクトリに <code>.env.local</code> ファイルを作成
-                </li>
-                <li>
-                  以下の環境変数を設定:
-                  <pre className="bg-gray-100 p-2 mt-2 rounded">
-                    NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-                    <br />
-                    NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...（あなたのanon keyをここに）
-                    <br />
-                    SUPABASE_SERVICE_ROLE_KEY=eyJ...（あなたのservice role keyをここに）
-                  </pre>
-                </li>
-                <li>開発サーバーを再起動</li>
-              </ol>
-            </div>
-
-            <div>
-              <h3 className="font-medium mb-2">本番環境での設定</h3>
-              <ol className="list-decimal list-inside space-y-2">
-                <li>ホスティングプラットフォーム（Vercelなど）の環境変数設定ページにアクセス</li>
-                <li>上記の3つの環境変数を追加</li>
-                <li>アプリケーションを再デプロイ</li>
-              </ol>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
