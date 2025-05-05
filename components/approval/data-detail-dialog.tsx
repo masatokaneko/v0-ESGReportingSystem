@@ -66,11 +66,11 @@ export function DataDetailDialog({
             </div>
             <div>
               <div className="text-sm font-medium mb-1">拠点</div>
-              <div className="text-sm">{data.location}</div>
+              <div className="text-sm">{data.location || "未設定"}</div>
             </div>
             <div>
               <div className="text-sm font-medium mb-1">部門</div>
-              <div className="text-sm">{data.department}</div>
+              <div className="text-sm">{data.department || "未設定"}</div>
             </div>
             <div>
               <div className="text-sm font-medium mb-1">活動種類</div>

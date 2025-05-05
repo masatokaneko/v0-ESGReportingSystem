@@ -21,11 +21,11 @@ import type { ApprovalFilters } from "./data-approval-filters"
 interface DataEntry {
   id: number
   entry_date: string
-  location: { id: number; name: string; code: string }
-  department: { id: number; name: string; code: string }
+  location?: { id: number; name: string; code: string } | null
+  department?: { id: number; name: string; code: string } | null
   activity_type: string
   activity_amount: number
-  emission_factor: { id: number; activity_type: string; factor: number; unit: string }
+  emission_factor?: { id: number; activity_type: string; factor: number; unit: string } | null
   emission: number
   status: "pending" | "approved" | "rejected"
   submitter: string
@@ -48,6 +48,7 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
   const [rejectReason, setRejectReason] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // データの取得
   useEffect(() => {
@@ -56,6 +57,7 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
 
   const fetchData = async (filters: ApprovalFilters) => {
     setIsLoading(true)
+    setError(null)
     try {
       // クエリパラメータの構築
       const queryParams = new URLSearchParams()
@@ -72,9 +74,20 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
       }
 
       const fetchedData = await response.json()
-      setData(fetchedData)
+
+      // データの整合性チェックと修正
+      const sanitizedData = fetchedData.map((item: any) => ({
+        ...item,
+        // locationとdepartmentがnullの場合のフォールバック
+        location: item.location || { id: 0, name: "未設定", code: "N/A" },
+        department: item.department || { id: 0, name: "未設定", code: "N/A" },
+        emission_factor: item.emission_factor || { id: 0, activity_type: item.activity_type, factor: 0, unit: "N/A" },
+      }))
+
+      setData(sanitizedData)
     } catch (error) {
       console.error("Error fetching data entries:", error)
+      setError(error instanceof Error ? error.message : "データの取得に失敗しました")
       toast({
         title: "エラー",
         description: "データの取得に失敗しました。",
@@ -203,11 +216,11 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
     return {
       id: `ESG-${item.id}`,
       date: item.entry_date,
-      location: item.location.name,
-      department: item.department.name,
+      location: item.location?.name || "未設定",
+      department: item.department?.name || "未設定",
       activityType: item.activity_type,
       activityAmount: item.activity_amount,
-      emissionFactor: item.emission_factor.factor,
+      emissionFactor: item.emission_factor?.factor || 0,
       emission: item.emission,
       status: item.status,
       submitter: item.submitter,
@@ -218,11 +231,21 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
     }
   }
 
+  // エラー発生時のリトライボタン
+  const handleRetry = () => {
+    fetchData(filters)
+  }
+
   return (
     <>
       {isLoading ? (
         <div className="flex justify-center items-center h-64">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center h-64 space-y-4">
+          <p className="text-red-500">{error}</p>
+          <Button onClick={handleRetry}>再試行</Button>
         </div>
       ) : (
         <div className="rounded-md border">
@@ -252,8 +275,8 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">ESG-{item.id}</TableCell>
                     <TableCell>{item.entry_date}</TableCell>
-                    <TableCell>{item.location.name}</TableCell>
-                    <TableCell>{item.department.name}</TableCell>
+                    <TableCell>{item.location?.name || "未設定"}</TableCell>
+                    <TableCell>{item.department?.name || "未設定"}</TableCell>
                     <TableCell>{item.activity_type}</TableCell>
                     <TableCell className="text-right">{item.emission.toLocaleString()}</TableCell>
                     <TableCell>{getStatusBadge(item.status)}</TableCell>
@@ -332,7 +355,7 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
               </div>
               <div className="grid grid-cols-2 gap-1">
                 <div className="text-sm font-medium">拠点:</div>
-                <div className="text-sm">{selectedItem.location.name}</div>
+                <div className="text-sm">{selectedItem.location?.name || "未設定"}</div>
               </div>
               <div className="grid grid-cols-2 gap-1">
                 <div className="text-sm font-medium">活動種類:</div>
@@ -376,7 +399,7 @@ export function DataApprovalTable({ filters }: DataApprovalTableProps) {
               </div>
               <div className="grid grid-cols-2 gap-1">
                 <div className="text-sm font-medium">拠点:</div>
-                <div className="text-sm">{selectedItem.location.name}</div>
+                <div className="text-sm">{selectedItem.location?.name || "未設定"}</div>
               </div>
               <div className="grid grid-cols-2 gap-1">
                 <div className="text-sm font-medium">活動種類:</div>
