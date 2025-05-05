@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { isSupabaseServerInitialized, getSupabaseServer } from "@/lib/supabase"
+import { handleApiError } from "@/lib/api-error-handler"
 
 // リトライ処理を行う関数
 async function fetchWithRetry(fn: () => Promise<any>, retries = 3, delay = 500) {
@@ -42,7 +43,7 @@ export async function GET() {
 
     if (emissionsError) {
       console.error("Error fetching emissions data:", emissionsError)
-      throw new Error(`Failed to fetch emissions data: ${emissionsError.message}`)
+      return handleApiError(emissionsError, "Failed to fetch emissions data")
     }
 
     // 排出量の計算 - JavaScriptで集計
@@ -65,7 +66,7 @@ export async function GET() {
 
     if (sourceError) {
       console.error("Error fetching source data:", sourceError)
-      throw new Error(`Failed to fetch source data: ${sourceError.message}`)
+      return handleApiError(sourceError, "Failed to fetch source data")
     }
 
     // 排出源別データの集計 - JavaScriptで集計
@@ -102,7 +103,7 @@ export async function GET() {
 
     if (trendError) {
       console.error("Error fetching trend data:", trendError)
-      throw new Error(`Failed to fetch trend data: ${trendError.message}`)
+      return handleApiError(trendError, "Failed to fetch trend data")
     }
 
     // 月別データの集計 - JavaScriptで集計
@@ -149,7 +150,7 @@ export async function GET() {
 
     if (activityError) {
       console.error("Error fetching activity data:", activityError)
-      throw new Error(`Failed to fetch activity data: ${activityError.message}`)
+      return handleApiError(activityError, "Failed to fetch activity data")
     }
 
     const recentActivities = (activityData || []).map((entry) => ({
@@ -185,10 +186,8 @@ export async function GET() {
     )
   } catch (error) {
     console.error("Error in dashboard summary API:", error)
-    return NextResponse.json(
-      {
-        error: "Failed to fetch dashboard data",
-        message: error instanceof Error ? error.message : "Unknown error",
+    return handleApiError(error, "Failed to fetch dashboard data", {
+      fallbackData: {
         emissions: {
           totalEmissions: 0,
           monthlyChange: 0,
@@ -199,12 +198,6 @@ export async function GET() {
         emissionsTrend: [],
         recentActivities: [],
       },
-      {
-        status: 500,
-        headers: {
-          "Cache-Control": "no-store, max-age=0",
-        },
-      },
-    )
+    })
   }
 }
