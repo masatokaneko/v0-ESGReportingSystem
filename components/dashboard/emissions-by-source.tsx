@@ -1,16 +1,16 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
-import { toast } from "@/hooks/use-toast"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
+import { logClientError } from "@/lib/error-logger"
 
 interface SourceData {
   name: string
   value: number
-  color: string
 }
 
-const COLORS = ["#002B5B", "#0059B8", "#0077CC", "#0095DD", "#00B3EE", "#00D1FF", "#00EFFF"]
+const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#82CA9D"]
 
 export function EmissionsBySource() {
   const [data, setData] = useState<SourceData[]>([])
@@ -23,47 +23,28 @@ export function EmissionsBySource() {
         const response = await fetch("/api/dashboard/summary")
         if (!response.ok) {
           const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to fetch dashboard data")
+          throw new Error(errorData.message || "Failed to fetch dashboard data")
         }
 
         const dashboardData = await response.json()
-        if (!dashboardData.sourceData) {
-          throw new Error("Source data is missing")
-        }
 
-        const sourceData = dashboardData.sourceData
-
-        // データを配列に変換
-        const chartData: SourceData[] = Object.entries(sourceData).map(([name, value], index) => ({
-          name,
-          value: Number(value) || 0,
-          color: COLORS[index % COLORS.length],
-        }))
-
-        // 値の大きい順にソート
-        chartData.sort((a, b) => b.value - a.value)
-
-        // 上位5つを取得し、残りはその他にまとめる
-        if (chartData.length > 5) {
-          const top5 = chartData.slice(0, 5)
-          const others = chartData.slice(5).reduce(
-            (acc, curr) => {
-              acc.value += curr.value
-              return acc
-            },
-            { name: "その他", value: 0, color: COLORS[5] },
-          )
-          setData([...top5, others])
+        // APIからのデータ構造に合わせて処理
+        if (dashboardData.emissionsBySource) {
+          setData(dashboardData.emissionsBySource)
         } else {
-          setData(chartData)
+          console.warn("Emissions by source data not found in API response")
+          setData([])
         }
       } catch (error) {
-        console.error("Error fetching dashboard data:", error)
-        setError(error instanceof Error ? error.message : "Unknown error")
-        toast({
-          title: "エラー",
-          description: "ダッシュボードデータの取得に失敗しました。",
-          variant: "destructive",
+        console.error("Error fetching emissions by source:", error)
+        const errorMessage = error instanceof Error ? error.message : "Unknown error"
+        setError(errorMessage)
+        logClientError({
+          message: "Failed to fetch emissions by source data",
+          source: "EmissionsBySource",
+          severity: "error",
+          stack: error instanceof Error ? error.stack : undefined,
+          context: { component: "EmissionsBySource" },
         })
       } finally {
         setIsLoading(false)
@@ -75,48 +56,74 @@ export function EmissionsBySource() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-[300px]">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>排出源別割合</CardTitle>
+          <CardDescription>活動タイプ別の排出量割合</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[300px] flex items-center justify-center">
+          <div className="w-full h-full animate-pulse bg-muted rounded-md"></div>
+        </CardContent>
+      </Card>
     )
   }
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-[300px] text-red-500">
-        <p>データの読み込みに失敗しました。</p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>排出源別割合</CardTitle>
+          <CardDescription>活動タイプ別の排出量割合</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[300px] flex items-center justify-center text-red-500">
+          <p>データの読み込みに失敗しました: {error}</p>
+        </CardContent>
+      </Card>
     )
   }
 
-  if (data.length === 0) {
+  if (!data || data.length === 0) {
     return (
-      <div className="flex justify-center items-center h-[300px] text-muted-foreground">
-        <p>データがありません</p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>排出源別割合</CardTitle>
+          <CardDescription>活動タイプ別の排出量割合</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[300px] flex items-center justify-center text-muted-foreground">
+          <p>データがありません</p>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <PieChart>
-        <Pie
-          data={data}
-          cx="50%"
-          cy="50%"
-          labelLine={false}
-          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-          outerRadius={80}
-          fill="#8884d8"
-          dataKey="value"
-        >
-          {data.map((entry, index) => (
-            <Cell key={`cell-${index}`} fill={entry.color} />
-          ))}
-        </Pie>
-        <Tooltip formatter={(value) => [`${value.toLocaleString()} kg-CO2`, ""]} />
-        <Legend />
-      </PieChart>
-    </ResponsiveContainer>
+    <Card>
+      <CardHeader>
+        <CardTitle>排出源別割合</CardTitle>
+        <CardDescription>活動タイプ別の排出量割合</CardDescription>
+      </CardHeader>
+      <CardContent className="h-[300px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              outerRadius={80}
+              fill="#8884d8"
+              dataKey="value"
+              label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip formatter={(value) => `${value.toLocaleString()} kg-CO2e`} />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
   )
 }

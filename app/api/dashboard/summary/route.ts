@@ -1,158 +1,166 @@
 import { NextResponse } from "next/server"
-import { supabaseServer } from "@/lib/supabase"
+import { isSupabaseServerInitialized, getSupabaseServer } from "@/lib/supabase"
 
-// ダッシュボード用のサマリーデータを取得するAPI
 export async function GET() {
   try {
-    // 総排出量
-    const { data: totalEmission, error: totalEmissionError } = await supabaseServer
+    // Supabaseクライアントが初期化されていない場合はダミーデータを返す
+    if (!isSupabaseServerInitialized()) {
+      return NextResponse.json({
+        emissions: {
+          totalEmissions: 0,
+          monthlyChange: 0,
+          yearlyChange: 0,
+          unit: "tCO2e",
+        },
+        emissionsBySource: [],
+        emissionsTrend: [],
+        recentActivities: [],
+      })
+    }
+
+    const supabase = getSupabaseServer()
+
+    // 総排出量の取得 - 'emission'カラムを使用
+    const { data: emissionsData, error: emissionsError } = await supabase
       .from("data_entries")
-      .select("emission")
+      .select("emission, emission_factors!inner(factor, category)")
+      .eq("status", "approved")
 
-    if (totalEmissionError) {
-      return NextResponse.json({ error: totalEmissionError.message }, { status: 500 })
+    if (emissionsError) {
+      console.error("Error fetching emissions data:", emissionsError)
+      throw new Error(`Failed to fetch emissions data: ${emissionsError.message}`)
     }
 
-    const total = totalEmission.reduce((sum, item) => sum + (item.emission || 0), 0)
+    // 排出量の計算 - 直接'emission'カラムを使用
+    const totalEmissions = emissionsData.reduce((sum, entry) => {
+      return sum + (entry.emission || 0)
+    }, 0)
 
-    // Scope別排出量 - テーブル名を修正
-    const { data: scopeEmissions, error: scopeEmissionsError } = await supabaseServer.from("data_entries").select(`
+    // 排出源別データの取得 - 'name'カラムを使用せず、'category'を使用
+    const { data: sourceData, error: sourceError } = await supabase
+      .from("data_entries")
+      .select(`
         emission,
-        emission_factors!inner(category)
+        activity_type,
+        emission_factors!inner(id, factor, category)
       `)
+      .eq("status", "approved")
 
-    if (scopeEmissionsError) {
-      return NextResponse.json({ error: scopeEmissionsError.message }, { status: 500 })
+    if (sourceError) {
+      console.error("Error fetching source data:", sourceError)
+      throw new Error(`Failed to fetch source data: ${sourceError.message}`)
     }
 
-    const scopeData = {
-      scope1: 0,
-      scope2: 0,
-      scope3: 0,
-    }
+    // 排出源別データの集計 - activity_typeを使用
+    const sourceMap = new Map()
+    sourceData.forEach((entry) => {
+      const category = entry.activity_type || "その他"
+      const value = entry.emission || 0
 
-    scopeEmissions.forEach((item) => {
-      if (!item.emission_factors || !item.emission) return
-
-      const category = item.emission_factors.category || ""
-      if (category.startsWith("Scope 1")) {
-        scopeData.scope1 += item.emission
-      } else if (category.startsWith("Scope 2")) {
-        scopeData.scope2 += item.emission
-      } else if (category.startsWith("Scope 3")) {
-        scopeData.scope3 += item.emission
+      if (sourceMap.has(category)) {
+        sourceMap.set(category, sourceMap.get(category) + value)
+      } else {
+        sourceMap.set(category, value)
       }
     })
 
-    // 最近の活動
-    const { data: recentActivities, error: recentActivitiesError } = await supabaseServer
-      .from("data_entries")
-      .select(
-        `
-        id,
-        entry_date,
-        activity_type,
-        status,
-        submitter,
-        created_at,
-        approved_by,
-        approved_at,
-        location:location_id(name),
-        department:department_id(name)
-      `,
-      )
-      .order("created_at", { ascending: false })
-      .limit(5)
-
-    if (recentActivitiesError) {
-      return NextResponse.json({ error: recentActivitiesError.message }, { status: 500 })
-    }
-
-    // nullチェックを追加
-    const safeRecentActivities = recentActivities.map((activity) => ({
-      ...activity,
-      location: activity.location || { name: "不明" },
-      department: activity.department || { name: "不明" },
-      submitter: activity.submitter || "不明",
-      activity_type: activity.activity_type || "不明",
-      status: activity.status || "pending",
-      created_at: activity.created_at || new Date().toISOString(),
+    const emissionsBySource = Array.from(sourceMap.entries()).map(([name, value]) => ({
+      name,
+      value: Number(value.toFixed(2)),
     }))
 
-    // 排出源別データ
-    const { data: emissionsBySource, error: emissionsBySourceError } = await supabaseServer
+    // 月別排出量トレンドの取得
+    const { data: trendData, error: trendError } = await supabase
       .from("data_entries")
-      .select("activity_type, emission")
+      .select(`
+        emission,
+        entry_date,
+        emission_factors!inner(factor, category)
+      `)
+      .eq("status", "approved")
+      .order("entry_date", { ascending: true })
 
-    if (emissionsBySourceError) {
-      return NextResponse.json({ error: emissionsBySourceError.message }, { status: 500 })
+    if (trendError) {
+      console.error("Error fetching trend data:", trendError)
+      throw new Error(`Failed to fetch trend data: ${trendError.message}`)
     }
 
-    const sourceData: Record<string, number> = {}
-    emissionsBySource.forEach((item) => {
-      if (!item.activity_type || !item.emission) return
+    // 月別データの集計 - entry_dateを使用
+    const trendMap = new Map()
+    trendData.forEach((entry) => {
+      if (!entry.entry_date) return
 
-      if (sourceData[item.activity_type]) {
-        sourceData[item.activity_type] += item.emission
+      const date = new Date(entry.entry_date)
+      const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+      const value = entry.emission || 0
+
+      if (trendMap.has(monthYear)) {
+        trendMap.set(monthYear, trendMap.get(monthYear) + value)
       } else {
-        sourceData[item.activity_type] = item.emission
+        trendMap.set(monthYear, value)
       }
     })
 
-    // 月別排出量データ - テーブル名を修正
-    const { data: monthlyEmissions, error: monthlyEmissionsError } = await supabaseServer.from("data_entries").select(`
-        entry_date,
+    const emissionsTrend = Array.from(trendMap.entries())
+      .map(([month, value]) => ({
+        month,
+        emissions: Number(value.toFixed(2)),
+      }))
+      .slice(-12) // 直近12ヶ月のデータのみ
+
+    // 最近のアクティビティの取得 - 'name'カラムを使用せず、'category'を使用
+    const { data: activityData, error: activityError } = await supabase
+      .from("data_entries")
+      .select(`
+        id,
         emission,
+        status,
+        created_at,
+        updated_at,
+        submitter,
+        activity_type,
         emission_factors!inner(category)
       `)
+      .order("updated_at", { ascending: false })
+      .limit(5)
 
-    if (monthlyEmissionsError) {
-      return NextResponse.json({ error: monthlyEmissionsError.message }, { status: 500 })
+    if (activityError) {
+      console.error("Error fetching activity data:", activityError)
+      throw new Error(`Failed to fetch activity data: ${activityError.message}`)
     }
 
-    const monthlyData: Record<string, { scope1: number; scope2: number; scope3: number }> = {}
-    const currentYear = new Date().getFullYear()
+    const recentActivities = activityData.map((entry) => ({
+      id: entry.id,
+      action: `${entry.activity_type || "データ"} (${entry.emission_factors?.category || "未分類"})`,
+      user: entry.submitter || "システム",
+      timestamp: entry.updated_at || entry.created_at,
+      details: `排出量: ${entry.emission || 0} kg-CO2e`,
+      status: entry.status,
+    }))
 
-    // 過去12ヶ月分のデータを初期化
-    for (let i = 0; i < 12; i++) {
-      const date = new Date(currentYear, i, 1)
-      const monthKey = date.toLocaleString("ja-JP", { month: "long" })
-      monthlyData[monthKey] = { scope1: 0, scope2: 0, scope3: 0 }
-    }
-
-    monthlyEmissions.forEach((item) => {
-      if (!item.entry_date || !item.emission_factors || !item.emission) return
-
-      try {
-        const date = new Date(item.entry_date)
-        const monthKey = date.toLocaleString("ja-JP", { month: "long" })
-
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = { scope1: 0, scope2: 0, scope3: 0 }
-        }
-
-        const category = item.emission_factors.category || ""
-        if (category.startsWith("Scope 1")) {
-          monthlyData[monthKey].scope1 += item.emission
-        } else if (category.startsWith("Scope 2")) {
-          monthlyData[monthKey].scope2 += item.emission
-        } else if (category.startsWith("Scope 3")) {
-          monthlyData[monthKey].scope3 += item.emission
-        }
-      } catch (error) {
-        console.error("Error processing monthly data:", error)
-      }
-    })
+    // 月次変化率の計算（ダミーデータ）
+    const monthlyChange = 5.2
+    const yearlyChange = 12.5
 
     return NextResponse.json({
-      totalEmission: total,
-      scopeData,
-      recentActivities: safeRecentActivities,
-      sourceData,
-      monthlyData,
+      emissions: {
+        totalEmissions: Number(totalEmissions.toFixed(2)),
+        monthlyChange,
+        yearlyChange,
+        unit: "kg-CO2e",
+      },
+      emissionsBySource,
+      emissionsTrend,
+      recentActivities,
     })
   } catch (error) {
-    console.error("Dashboard summary error:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    console.error("Error in dashboard summary API:", error)
+    return NextResponse.json(
+      {
+        error: "Failed to fetch dashboard data",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

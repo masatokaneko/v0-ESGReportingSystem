@@ -3,7 +3,20 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { BarChart3, FileInput, CheckSquare, FileOutput, Search, Settings, LogOut, Upload, Link2 } from "lucide-react"
+import {
+  BarChart3,
+  FileInput,
+  CheckSquare,
+  FileOutput,
+  Search,
+  Settings,
+  LogOut,
+  Upload,
+  Link2,
+  AlertCircle,
+  Bug,
+  ShieldAlert,
+} from "lucide-react"
 
 const navItems = [
   {
@@ -46,6 +59,34 @@ const navItems = [
     href: "/settings",
     icon: Settings,
   },
+  {
+    title: "エラーログ管理",
+    href: "/admin/error-logs",
+    icon: AlertCircle,
+  },
+  {
+    title: "エラーテスト",
+    href: "/admin/error-test",
+    icon: Bug,
+  },
+  {
+    title: "管理者",
+    icon: ShieldAlert,
+    items: [
+      {
+        title: "エラーログ",
+        href: "/admin/error-logs",
+      },
+      {
+        title: "エラーテスト",
+        href: "/admin/error-test",
+      },
+      {
+        title: "システムステータス",
+        href: "/admin/system-status",
+      },
+    ],
+  },
 ]
 
 export function Sidebar() {
@@ -62,6 +103,25 @@ export function Sidebar() {
         <div className="flex-1 overflow-auto py-2">
           <nav className="grid items-start px-2 text-sm font-medium">
             {navItems.map((item, index) => {
+              if (item.items) {
+                return (
+                  <div key={index}>
+                    <div className="mb-2 mt-4 px-3 text-sm font-bold uppercase text-muted-foreground">{item.title}</div>
+                    {item.items.map((subItem, subIndex) => (
+                      <Link
+                        key={subIndex}
+                        href={subItem.href}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:text-primary",
+                          pathname === subItem.href ? "bg-muted text-primary" : "text-muted-foreground",
+                        )}
+                      >
+                        <span>{subItem.title}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )
+              }
               const Icon = item.icon
               return (
                 <Link

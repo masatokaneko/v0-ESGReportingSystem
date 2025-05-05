@@ -1,4 +1,4 @@
-import { supabaseServer } from "./supabase"
+import { getSupabaseServer, isSupabaseServerInitialized } from "./supabase"
 
 export type ErrorSeverity = "info" | "warning" | "error" | "critical"
 export type ErrorStatus = "open" | "in_progress" | "resolved" | "ignored"
@@ -21,7 +21,13 @@ export interface ErrorLogData {
  * サーバーサイドでエラーをログに記録する関数
  */
 export async function logServerError(data: ErrorLogData) {
+  if (!isSupabaseServerInitialized()) {
+    console.error("Supabase client is not initialized. Error logging failed.")
+    return { success: false, error: "Database client not initialized" }
+  }
+
   try {
+    const supabaseServer = getSupabaseServer()
     const { error } = await supabaseServer.from("error_logs").insert([
       {
         error_type: data.error_type,
@@ -40,12 +46,13 @@ export async function logServerError(data: ErrorLogData) {
 
     if (error) {
       console.error("Error logging failed:", error)
+      return { success: false, error: error.message }
     }
 
-    return { success: !error }
+    return { success: true }
   } catch (err) {
     console.error("Error in logServerError:", err)
-    return { success: false }
+    return { success: false, error: (err as Error).message }
   }
 }
 

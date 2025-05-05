@@ -38,6 +38,8 @@ export class ErrorBoundary extends Component<Props, State> {
       context: {
         componentStack: errorInfo.componentStack,
       },
+    }).catch((err) => {
+      console.error("Failed to log error:", err)
     })
   }
 

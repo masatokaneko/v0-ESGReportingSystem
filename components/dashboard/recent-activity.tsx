@@ -1,25 +1,21 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { format } from "date-fns"
-import { ja } from "date-fns/locale"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { toast } from "@/hooks/use-toast"
+import { logClientError } from "@/lib/error-logger"
 
-interface Activity {
+interface ActivityItem {
   id: string
-  entry_date: string
-  activity_type: string
+  action: string
+  user: string
+  timestamp: string
+  details: string
   status: string
-  submitter: string
-  created_at: string
-  location: { name: string }
-  department: { name: string }
 }
 
 export function RecentActivity() {
-  const [activities, setActivities] = useState<Activity[]>([])
+  const [activities, setActivities] = useState<ActivityItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,22 +25,28 @@ export function RecentActivity() {
         const response = await fetch("/api/dashboard/summary")
         if (!response.ok) {
           const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to fetch dashboard data")
+          throw new Error(errorData.message || "Failed to fetch dashboard data")
         }
 
         const dashboardData = await response.json()
-        if (!dashboardData.recentActivities) {
-          throw new Error("Recent activities data is missing")
-        }
 
-        setActivities(dashboardData.recentActivities)
+        // APIからのデータ構造に合わせて処理
+        if (dashboardData.recentActivities) {
+          setActivities(dashboardData.recentActivities)
+        } else {
+          console.warn("Recent activities data not found in API response")
+          setActivities([])
+        }
       } catch (error) {
-        console.error("Error fetching dashboard data:", error)
-        setError(error instanceof Error ? error.message : "Unknown error")
-        toast({
-          title: "エラー",
-          description: "ダッシュボードデータの取得に失敗しました。",
-          variant: "destructive",
+        console.error("Error fetching recent activities:", error)
+        const errorMessage = error instanceof Error ? error.message : "Unknown error"
+        setError(errorMessage)
+        logClientError({
+          message: "Failed to fetch recent activities data",
+          source: "RecentActivity",
+          severity: "error",
+          stack: error instanceof Error ? error.stack : undefined,
+          context: { component: "RecentActivity" },
         })
       } finally {
         setIsLoading(false)
@@ -54,32 +56,53 @@ export function RecentActivity() {
     fetchData()
   }, [])
 
+  // 日付をフォーマットする関数
+  const formatDate = (dateString: string) => {
+    if (!dateString) return ""
+
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleString("ja-JP", {
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } catch (error) {
+      console.error("Error formatting date:", error)
+      return dateString
+    }
+  }
+
+  // ステータスに応じたバッジの色を返す関数
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "approved":
         return <Badge className="bg-green-500">承認済</Badge>
       case "rejected":
-        return <Badge variant="destructive">却下</Badge>
+        return <Badge className="bg-red-500">却下</Badge>
       case "pending":
-        return <Badge variant="outline">審査中</Badge>
+        return <Badge className="bg-yellow-500">審査中</Badge>
       default:
-        return <Badge variant="secondary">{status}</Badge>
+        return <Badge className="bg-gray-500">{status}</Badge>
     }
   }
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className="col-span-3">
         <CardHeader>
           <CardTitle>最近の活動</CardTitle>
+          <CardDescription>直近のデータ入力・承認状況</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="flex items-center animate-pulse">
                 <div className="w-full space-y-2">
-                  <div className="h-4 bg-muted rounded w-3/4"></div>
-                  <div className="h-3 bg-muted rounded w-1/2"></div>
+                  <div className="h-4 bg-muted rounded-md w-3/4"></div>
+                  <div className="h-3 bg-muted rounded-md w-1/2"></div>
                 </div>
               </div>
             ))}
@@ -91,27 +114,29 @@ export function RecentActivity() {
 
   if (error) {
     return (
-      <Card>
+      <Card className="col-span-3">
         <CardHeader>
           <CardTitle>最近の活動</CardTitle>
+          <CardDescription>直近のデータ入力・承認状況</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex justify-center items-center h-[200px] text-red-500">
-            <p>データの読み込みに失敗しました。</p>
+          <div className="text-red-500">
+            <p>データの読み込みに失敗しました: {error}</p>
           </div>
         </CardContent>
       </Card>
     )
   }
 
-  if (activities.length === 0) {
+  if (!activities || activities.length === 0) {
     return (
-      <Card>
+      <Card className="col-span-3">
         <CardHeader>
           <CardTitle>最近の活動</CardTitle>
+          <CardDescription>直近のデータ入力・承認状況</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex justify-center items-center h-[200px] text-muted-foreground">
+          <div className="text-muted-foreground">
             <p>最近の活動はありません</p>
           </div>
         </CardContent>
@@ -120,28 +145,24 @@ export function RecentActivity() {
   }
 
   return (
-    <Card>
+    <Card className="col-span-3">
       <CardHeader>
         <CardTitle>最近の活動</CardTitle>
+        <CardDescription>直近のデータ入力・承認状況</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-8">
+        <div className="space-y-4">
           {activities.map((activity) => (
-            <div key={activity.id} className="flex items-center">
-              <div className="ml-4 space-y-1">
-                <p className="text-sm font-medium leading-none">
-                  {activity.activity_type} - {getStatusBadge(activity.status)}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {activity.location?.name || "不明"} / {activity.department?.name || "不明"} /{" "}
-                  {activity.submitter || "不明"}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {activity.created_at
-                    ? format(new Date(activity.created_at), "yyyy年MM月dd日 HH:mm", { locale: ja })
-                    : "日時不明"}
-                </p>
+            <div key={activity.id} className="flex flex-col space-y-1">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">{activity.action}</p>
+                {getStatusBadge(activity.status)}
               </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{activity.user}</span>
+                <span>{formatDate(activity.timestamp)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{activity.details}</p>
             </div>
           ))}
         </div>

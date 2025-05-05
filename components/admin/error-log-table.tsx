@@ -4,9 +4,19 @@ import { useState } from "react"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { toast } from "@/hooks/use-toast"
 import type { ErrorSeverity, ErrorStatus } from "@/lib/error-logger"
 
 interface ErrorLog {
@@ -19,6 +29,8 @@ interface ErrorLog {
   severity: ErrorSeverity
   status: ErrorStatus
   created_at: string
+  resolved_at?: string
+  resolution_notes?: string
   context?: any
   request_data?: any
 }
@@ -29,6 +41,9 @@ interface ErrorLogTableProps {
 
 export function ErrorLogTable({ errorLogs }: ErrorLogTableProps) {
   const [selectedLog, setSelectedLog] = useState<ErrorLog | null>(null)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [newStatus, setNewStatus] = useState<ErrorStatus>("open")
+  const [resolutionNotes, setResolutionNotes] = useState("")
 
   const getSeverityColor = (severity: ErrorSeverity) => {
     switch (severity) {
@@ -57,6 +72,49 @@ export function ErrorLogTable({ errorLogs }: ErrorLogTableProps) {
         return "bg-gray-100 text-gray-800"
       default:
         return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const handleUpdateStatus = async () => {
+    if (!selectedLog) return
+
+    setIsUpdating(true)
+
+    try {
+      const response = await fetch(`/api/error-logs/${selectedLog.id}/status`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          status: newStatus,
+          resolution_notes: resolutionNotes,
+          resolved_at: newStatus === "resolved" ? new Date().toISOString() : null,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("ステータスの更新に失敗しました")
+      }
+
+      toast({
+        title: "ステータスを更新しました",
+        description: `エラーログのステータスを「${newStatus}」に更新しました`,
+      })
+
+      // ダイアログを閉じる
+      setSelectedLog(null)
+
+      // ページをリロード
+      window.location.reload()
+    } catch (error) {
+      toast({
+        title: "エラー",
+        description: error instanceof Error ? error.message : "ステータスの更新に失敗しました",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdating(false)
     }
   }
 
@@ -102,7 +160,15 @@ export function ErrorLogTable({ errorLogs }: ErrorLogTableProps) {
                   </TableCell>
                   <TableCell>{log.route || log.component || "-"}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedLog(log)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedLog(log)
+                        setNewStatus(log.status)
+                        setResolutionNotes(log.resolution_notes || "")
+                      }}
+                    >
                       詳細
                     </Button>
                   </TableCell>
@@ -160,7 +226,46 @@ export function ErrorLogTable({ errorLogs }: ErrorLogTableProps) {
                   </pre>
                 </div>
               )}
+
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-medium mb-2">ステータス更新</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">新しいステータス</label>
+                    <Select value={newStatus} onValueChange={setNewStatus}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="open">未対応</SelectItem>
+                        <SelectItem value="in_progress">対応中</SelectItem>
+                        <SelectItem value="resolved">解決済み</SelectItem>
+                        <SelectItem value="ignored">無視</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium">解決メモ</label>
+                    <Textarea
+                      value={resolutionNotes}
+                      onChange={(e) => setResolutionNotes(e.target.value)}
+                      placeholder="エラーの解決方法や対応内容を記録"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSelectedLog(null)}>
+                キャンセル
+              </Button>
+              <Button onClick={handleUpdateStatus} disabled={isUpdating}>
+                {isUpdating ? "更新中..." : "ステータスを更新"}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         )}
       </Dialog>

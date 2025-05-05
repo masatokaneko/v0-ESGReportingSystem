@@ -3,121 +3,209 @@
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card } from "@/components/ui/card"
+import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { DatePicker } from "@/components/ui/date-picker"
-import type { ErrorSeverity, ErrorStatus } from "@/lib/error-logger"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { z } from "zod"
+
+const formSchema = z.object({
+  error_type: z.string().optional(),
+  severity: z.string().optional(),
+  status: z.string().optional(),
+  component: z.string().optional(),
+  route: z.string().optional(),
+  from_date: z.string().optional(),
+  to_date: z.string().optional(),
+})
+
+type FormValues = z.infer<typeof formSchema>
 
 export function ErrorLogFilters() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const [filters, setFilters] = useState({
-    errorType: searchParams.get("errorType") || "",
-    severity: (searchParams.get("severity") as ErrorSeverity) || "",
-    status: (searchParams.get("status") as ErrorStatus) || "",
-    startDate: searchParams.get("startDate") ? new Date(searchParams.get("startDate")!) : undefined,
-    endDate: searchParams.get("endDate") ? new Date(searchParams.get("endDate")!) : undefined,
+  const [isLoading, setIsLoading] = useState(false)
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      error_type: searchParams.get("error_type") || "",
+      severity: searchParams.get("severity") || "",
+      status: searchParams.get("status") || "",
+      component: searchParams.get("component") || "",
+      route: searchParams.get("route") || "",
+      from_date: searchParams.get("from_date") || "",
+      to_date: searchParams.get("to_date") || "",
+    },
   })
 
-  const handleFilterChange = (key: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value }))
-  }
+  const onSubmit = (values: FormValues) => {
+    setIsLoading(true)
 
-  const applyFilters = () => {
+    // フィルター条件をURLクエリパラメータに変換
     const params = new URLSearchParams()
 
-    if (filters.errorType) params.set("errorType", filters.errorType)
-    if (filters.severity) params.set("severity", filters.severity)
-    if (filters.status) params.set("status", filters.status)
-    if (filters.startDate) params.set("startDate", filters.startDate.toISOString().split("T")[0])
-    if (filters.endDate) params.set("endDate", filters.endDate.toISOString().split("T")[0])
+    Object.entries(values).forEach(([key, value]) => {
+      if (value) {
+        params.set(key, value)
+      }
+    })
 
+    // URLを更新してページをリロード
     router.push(`/admin/error-logs?${params.toString()}`)
+
+    setIsLoading(false)
   }
 
   const resetFilters = () => {
-    setFilters({
-      errorType: "",
+    form.reset({
+      error_type: "",
       severity: "",
       status: "",
-      startDate: undefined,
-      endDate: undefined,
+      component: "",
+      route: "",
+      from_date: "",
+      to_date: "",
     })
     router.push("/admin/error-logs")
   }
 
   return (
-    <div className="bg-muted/40 p-4 rounded-md mb-6 space-y-4">
-      <h2 className="font-medium">フィルター</h2>
+    <Card className="p-4 mb-6">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <FormField
+              control={form.control}
+              name="error_type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>エラータイプ</FormLabel>
+                  <FormControl>
+                    <Input placeholder="エラータイプで検索" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm">エラータイプ</label>
-          <Input
-            placeholder="エラータイプで検索"
-            value={filters.errorType}
-            onChange={(e) => handleFilterChange("errorType", e.target.value)}
-          />
-        </div>
+            <FormField
+              control={form.control}
+              name="severity"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>重要度</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="すべての重要度" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="all">すべて</SelectItem>
+                      <SelectItem value="info">情報</SelectItem>
+                      <SelectItem value="warning">警告</SelectItem>
+                      <SelectItem value="error">エラー</SelectItem>
+                      <SelectItem value="critical">重大</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
+            />
 
-        <div className="space-y-2">
-          <label className="text-sm">重要度</label>
-          <Select value={filters.severity} onValueChange={(value) => handleFilterChange("severity", value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべて</SelectItem>
-              <SelectItem value="info">情報</SelectItem>
-              <SelectItem value="warning">警告</SelectItem>
-              <SelectItem value="error">エラー</SelectItem>
-              <SelectItem value="critical">重大</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ステータス</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="すべてのステータス" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="all">すべて</SelectItem>
+                      <SelectItem value="open">未対応</SelectItem>
+                      <SelectItem value="in_progress">対応中</SelectItem>
+                      <SelectItem value="resolved">解決済み</SelectItem>
+                      <SelectItem value="ignored">無視</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormItem>
+              )}
+            />
+          </div>
 
-        <div className="space-y-2">
-          <label className="text-sm">ステータス</label>
-          <Select value={filters.status} onValueChange={(value) => handleFilterChange("status", value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="すべて" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">すべて</SelectItem>
-              <SelectItem value="open">未対応</SelectItem>
-              <SelectItem value="in_progress">対応中</SelectItem>
-              <SelectItem value="resolved">解決済み</SelectItem>
-              <SelectItem value="ignored">無視</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="component"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>コンポーネント</FormLabel>
+                  <FormControl>
+                    <Input placeholder="コンポーネント名" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
 
-        <div className="space-y-2">
-          <label className="text-sm">開始日</label>
-          <DatePicker
-            date={filters.startDate}
-            setDate={(date) => handleFilterChange("startDate", date)}
-            placeholder="開始日"
-          />
-        </div>
+            <FormField
+              control={form.control}
+              name="route"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>ルート</FormLabel>
+                  <FormControl>
+                    <Input placeholder="ルートパス" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
 
-        <div className="space-y-2">
-          <label className="text-sm">終了日</label>
-          <DatePicker
-            date={filters.endDate}
-            setDate={(date) => handleFilterChange("endDate", date)}
-            placeholder="終了日"
-          />
-        </div>
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="from_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>開始日</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={resetFilters}>
-          リセット
-        </Button>
-        <Button onClick={applyFilters}>フィルター適用</Button>
-      </div>
-    </div>
+            <FormField
+              control={form.control}
+              name="to_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>終了日</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+          </div>
+
+          <div className="flex justify-end space-x-2">
+            <Button type="button" variant="outline" onClick={resetFilters} disabled={isLoading}>
+              リセット
+            </Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "検索中..." : "検索"}
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </Card>
   )
 }

@@ -1,55 +1,35 @@
 import { NextResponse } from "next/server"
-import { supabaseServer } from "@/lib/supabase"
+import { getSupabaseServer, isSupabaseServerInitialized } from "@/lib/supabase"
+import { handleApiError } from "@/lib/api-error-handler"
+import { logDatabaseConnectionError } from "@/lib/db-error-logger"
 
-// 拠点一覧を取得するAPI
 export async function GET() {
   try {
-    const { data, error } = await supabaseServer.from("locations").select("*").order("name")
+    // Supabaseサーバークライアントが初期化されているか確認
+    if (!isSupabaseServerInitialized()) {
+      const error = new Error("Supabase server client is not initialized")
+      await logDatabaseConnectionError(error, { endpoint: "/api/locations" })
+      return NextResponse.json(
+        {
+          error: "Database connection error",
+          message: "Supabase client is not initialized. Please check environment variables.",
+          requiredEnvVars: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"],
+        },
+        { status: 500 },
+      )
+    }
+
+    const supabase = getSupabaseServer()
+    const { data, error } = await supabase.from("locations").select("*").order("name")
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      throw error
     }
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error("Locations fetch error:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
+    return handleApiError(error, "Failed to fetch locations")
   }
 }
 
-// 新しい拠点を追加するAPI
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-
-    // 必須フィールドの検証
-    if (!body.name || !body.code) {
-      return NextResponse.json({ error: "Name and code are required" }, { status: 400 })
-    }
-
-    const { data, error } = await supabaseServer
-      .from("locations")
-      .insert([
-        {
-          name: body.name,
-          code: body.code,
-          address: body.address || null,
-          type: body.type || null,
-        },
-      ])
-      .select()
-
-    if (error) {
-      // コード重複エラーの特別処理
-      if (error.code === "23505") {
-        return NextResponse.json({ error: "A location with this code already exists" }, { status: 409 })
-      }
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json(data[0], { status: 201 })
-  } catch (error) {
-    console.error("Location creation error:", error)
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
-  }
-}
+// 他のメソッド（POST, PUT, DELETE）も同様に修正

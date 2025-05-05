@@ -19,6 +19,8 @@ export function useGlobalErrorHandler() {
         context: {
           reason: event.reason,
         },
+      }).catch((err) => {
+        console.error("Failed to log unhandled rejection:", err)
       })
     }
 
@@ -35,6 +37,8 @@ export function useGlobalErrorHandler() {
           lineno: event.lineno,
           colno: event.colno,
         },
+      }).catch((err) => {
+        console.error("Failed to log global error:", err)
       })
     }
 

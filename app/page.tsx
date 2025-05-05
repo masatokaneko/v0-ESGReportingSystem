@@ -8,6 +8,7 @@ import { EmissionsBySource } from "@/components/dashboard/emissions-by-source"
 import { EmissionsTrend } from "@/components/dashboard/emissions-trend"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { toast } from "@/hooks/use-toast"
+import { isSupabaseServerInitialized } from "@/lib/supabase"
 
 interface DashboardSummary {
   totalEmission: number
@@ -18,10 +19,16 @@ interface DashboardSummary {
   }
 }
 
+export const dynamic = "force-dynamic"
+
 export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Supabaseクライアントが初期化されているかチェック
+  const isSupabaseInitialized = isSupabaseServerInitialized()
+  const isDbInitialized = isSupabaseServerInitialized()
 
   useEffect(() => {
     const fetchData = async () => {
@@ -55,6 +62,31 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">ダッシュボード</h2>
       </div>
+
+      {!isDbInitialized && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  fillRule="evenodd"
+                  d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                データベース接続が初期化されていません。環境変数を設定してください。
+                <a href="/admin/system-status" className="font-medium text-yellow-700 underline hover:text-yellow-600">
+                  システムステータスを確認
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">概要</TabsTrigger>

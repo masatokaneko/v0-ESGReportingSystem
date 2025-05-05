@@ -1,5 +1,28 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { logServerError } from "@/lib/error-logger"
+import { getSupabaseServer, isSupabaseServerInitialized } from "@/lib/supabase"
+
+// エラーログをデータベースに記録する関数
+async function logErrorToDatabase(errorData: any) {
+  if (!isSupabaseServerInitialized()) {
+    console.error("Supabase client is not initialized. Error logging failed.")
+    return { success: false, error: "Database client not initialized" }
+  }
+
+  try {
+    const supabaseServer = getSupabaseServer()
+    const { error } = await supabaseServer.from("error_logs").insert([errorData])
+
+    if (error) {
+      console.error("Failed to log error to database:", error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    console.error("Error while logging to database:", err)
+    return { success: false, error: (err as Error).message }
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,10 +44,10 @@ export async function POST(request: NextRequest) {
       },
     }
 
-    const result = await logServerError(enhancedData)
+    const result = await logErrorToDatabase(enhancedData)
 
     if (!result.success) {
-      return NextResponse.json({ error: "Failed to log error" }, { status: 500 })
+      return NextResponse.json({ error: result.error || "Failed to log error" }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
