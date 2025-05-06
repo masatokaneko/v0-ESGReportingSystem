@@ -1,21 +1,31 @@
-import { createMockSupabaseClient } from "./supabase/mock"
+import { createClient } from "@supabase/supabase-js"
 
 // サーバーサイド用のSupabaseクライアント
 export const createServerSupabaseClient = () => {
-  // 環境変数がある場合は実際のSupabaseクライアントを使用
-  // 環境変数がない場合はモッククライアントを使用
-  return createMockSupabaseClient()
+  const supabaseUrl = process.env.SUPABASE_URL
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("Missing Supabase environment variables")
+  }
+
+  return createClient(supabaseUrl, supabaseKey)
 }
 
 // クライアントサイド用のSupabaseクライアント（シングルトンパターン）
-let clientSupabaseClient: ReturnType<typeof createMockSupabaseClient> | null = null
+let clientSupabaseClient: ReturnType<typeof createClient> | null = null
 
 export const createClientSupabaseClient = () => {
   if (clientSupabaseClient) return clientSupabaseClient
 
-  // 環境変数がある場合は実際のSupabaseクライアントを使用
-  // 環境変数がない場合はモッククライアントを使用
-  clientSupabaseClient = createMockSupabaseClient()
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Missing Supabase environment variables")
+  }
+
+  clientSupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
   return clientSupabaseClient
 }
 
