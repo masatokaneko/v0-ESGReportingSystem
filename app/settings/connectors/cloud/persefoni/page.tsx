@@ -17,35 +17,29 @@ import { ArrowLeft, CheckCircle, Info, RefreshCw, Shield } from "lucide-react"
 import Link from "next/link"
 
 const formSchema = z.object({
-  tenantUrl: z.string().url({ message: "有効なURLを入力してください" }),
-  clientId: z.string().min(1, { message: "クライアントIDを入力してください" }),
-  clientSecret: z.string().min(1, { message: "クライアントシークレットを入力してください" }),
-  username: z.string().min(1, { message: "ユーザー名を入力してください" }),
-  password: z.string().min(1, { message: "パスワードを入力してください" }),
+  apiKey: z.string().min(1, { message: "APIキーを入力してください" }),
+  organizationId: z.string().min(1, { message: "組織IDを入力してください" }),
   refreshRate: z.string(),
 })
 
 const dataItems = [
-  { id: "headcount", name: "従業員数", description: "部門・拠点ごとの従業員数データ", available: true },
-  { id: "safetyIncident", name: "安全インシデント", description: "安全インシデントの記録と詳細", available: true },
-  { id: "travelData", name: "出張データ", description: "従業員の出張記録と移動距離", available: true },
-  { id: "facilityUsage", name: "施設利用状況", description: "オフィス・施設の利用状況データ", available: false },
-  { id: "commutingData", name: "通勤データ", description: "従業員の通勤方法と距離", available: false },
+  { id: "emissionFactor", name: "排出係数", description: "地域・活動ごとの排出係数データ", available: true },
+  { id: "auditLog", name: "監査ログ", description: "データ変更・計算の監査ログ", available: true },
+  { id: "ghgInventory", name: "GHGインベントリ", description: "温室効果ガスインベントリデータ", available: true },
+  { id: "activityData", name: "活動データ", description: "排出量計算の基となる活動データ", available: true },
+  { id: "reductionTargets", name: "削減目標", description: "設定された排出量削減目標", available: false },
 ]
 
-export default function WorkdayPage() {
+export default function PersefoniPage() {
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [selectedItems, setSelectedItems] = useState<string[]>(["headcount", "safetyIncident"])
+  const [selectedItems, setSelectedItems] = useState<string[]>(["emissionFactor", "ghgInventory"])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      tenantUrl: "",
-      clientId: "",
-      clientSecret: "",
-      username: "",
-      password: "",
+      apiKey: "",
+      organizationId: "",
       refreshRate: "24h",
     },
   })
@@ -68,7 +62,7 @@ export default function WorkdayPage() {
   function handleDisconnect() {
     setIsConnected(false)
     form.reset()
-    setSelectedItems(["headcount", "safetyIncident"])
+    setSelectedItems(["emissionFactor", "ghgInventory"])
   }
 
   return (
@@ -79,8 +73,8 @@ export default function WorkdayPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">Workday 連携設定</h1>
-        <Badge className="ml-4 bg-purple-600">HR/安全管理</Badge>
+        <h1 className="text-2xl font-bold">Persefoni 連携設定</h1>
+        <Badge className="ml-4 bg-teal-600">サステナビリティ</Badge>
       </div>
 
       <div className="grid gap-6">
@@ -89,7 +83,7 @@ export default function WorkdayPage() {
             <CheckCircle className="h-5 w-5 text-green-600" />
             <AlertTitle className="text-green-800">接続済み</AlertTitle>
             <AlertDescription className="text-green-700">
-              Workdayとの接続が確立されています。データの同期は設定された間隔で行われます。
+              Persefoniとの接続が確立されています。データの同期は設定された間隔で行われます。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -106,52 +100,18 @@ export default function WorkdayPage() {
               <TabsContent value="connection">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Workday API 接続</CardTitle>
-                    <CardDescription>Workday APIに接続するための認証情報を入力してください。</CardDescription>
+                    <CardTitle>Persefoni API 接続</CardTitle>
+                    <CardDescription>Persefoni APIに接続するための認証情報を入力してください。</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Form {...form}>
                       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                         <FormField
                           control={form.control}
-                          name="tenantUrl"
+                          name="apiKey"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>テナントURL</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="https://wd3-impl-services1.workday.com/ccx/service/..."
-                                  {...field}
-                                  disabled={isConnected}
-                                />
-                              </FormControl>
-                              <FormDescription>WorkdayテナントのWeb Services APIエンドポイントURL</FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="clientId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>クライアントID</FormLabel>
-                              <FormControl>
-                                <Input placeholder="client_id_xxxxx" {...field} disabled={isConnected} />
-                              </FormControl>
-                              <FormDescription>Workday統合システム管理で取得したクライアントID</FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="clientSecret"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>クライアントシークレット</FormLabel>
+                              <FormLabel>APIキー</FormLabel>
                               <FormControl>
                                 <Input
                                   type="password"
@@ -160,9 +120,7 @@ export default function WorkdayPage() {
                                   disabled={isConnected}
                                 />
                               </FormControl>
-                              <FormDescription>
-                                Workday統合システム管理で取得したクライアントシークレット
-                              </FormDescription>
+                              <FormDescription>Persefoni開発者ポータルで取得したAPIキー</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -170,34 +128,14 @@ export default function WorkdayPage() {
 
                         <FormField
                           control={form.control}
-                          name="username"
+                          name="organizationId"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>ユーザー名</FormLabel>
+                              <FormLabel>組織ID</FormLabel>
                               <FormControl>
-                                <Input placeholder="integration_user@company.com" {...field} disabled={isConnected} />
+                                <Input placeholder="org_xxxxx" {...field} disabled={isConnected} />
                               </FormControl>
-                              <FormDescription>Workday統合用アカウントのユーザー名</FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>パスワード</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="password"
-                                  placeholder="••••••••••••••••"
-                                  {...field}
-                                  disabled={isConnected}
-                                />
-                              </FormControl>
-                              <FormDescription>Workday統合用アカウントのパスワード</FormDescription>
+                              <FormDescription>Persefoniアカウントに関連付けられた組織ID</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -216,13 +154,13 @@ export default function WorkdayPage() {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="6h">6時間ごと</SelectItem>
                                   <SelectItem value="12h">12時間ごと</SelectItem>
                                   <SelectItem value="24h">24時間ごと</SelectItem>
                                   <SelectItem value="weekly">週次</SelectItem>
+                                  <SelectItem value="monthly">月次</SelectItem>
                                 </SelectContent>
                               </Select>
-                              <FormDescription>Workdayからデータを取得する頻度</FormDescription>
+                              <FormDescription>Persefoniからデータを取得する頻度</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -254,7 +192,7 @@ export default function WorkdayPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>取得データ項目</CardTitle>
-                    <CardDescription>Workdayから取得するデータ項目を選択してください。</CardDescription>
+                    <CardDescription>Persefoniから取得するデータ項目を選択してください。</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -296,7 +234,7 @@ export default function WorkdayPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>詳細設定</CardTitle>
-                    <CardDescription>Workdayとの連携に関する詳細設定を行います。</CardDescription>
+                    <CardDescription>Persefoniとの連携に関する詳細設定を行います。</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -328,28 +266,15 @@ export default function WorkdayPage() {
 
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">
-                          <Checkbox id="anonymize" disabled={!isConnected} />
+                          <Checkbox id="syncChanges" disabled={!isConnected} />
                           <label
-                            htmlFor="anonymize"
+                            htmlFor="syncChanges"
                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                           >
-                            個人データの匿名化
+                            変更データの同期
                           </label>
                         </div>
-                        <p className="text-sm text-gray-500">個人を特定できる情報を匿名化して取得します</p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="aggregate" disabled={!isConnected} />
-                          <label
-                            htmlFor="aggregate"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                          >
-                            データの集計処理
-                          </label>
-                        </div>
-                        <p className="text-sm text-gray-500">部門・拠点レベルでデータを集計して取得します</p>
+                        <p className="text-sm text-gray-500">Persefoniでデータが変更された場合に自動的に同期します</p>
                       </div>
                     </div>
                   </CardContent>
@@ -366,13 +291,13 @@ export default function WorkdayPage() {
           <div>
             <Card>
               <CardHeader>
-                <CardTitle>Workday</CardTitle>
-                <CardDescription>人事・財務管理クラウドプラットフォーム</CardDescription>
+                <CardTitle>Persefoni</CardTitle>
+                <CardDescription>気候会計・排出量管理プラットフォーム</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="rounded-md overflow-hidden">
-                    <img src="/placeholder.svg?key=2m7iz" alt="Workday Platform" className="w-full object-cover" />
+                    <img src="/placeholder.svg?key=yhca0" alt="Persefoni Platform" className="w-full object-cover" />
                   </div>
 
                   <div className="space-y-2">
@@ -380,19 +305,19 @@ export default function WorkdayPage() {
                     <ul className="space-y-1 text-sm">
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        人事データの一元管理
+                        GHG排出量の計算と管理
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        安全インシデント管理
+                        排出係数データベース
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        出張・経費管理
+                        監査対応の追跡機能
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        施設・資産管理
+                        排出量削減計画の策定
                       </li>
                     </ul>
                   </div>
@@ -402,22 +327,22 @@ export default function WorkdayPage() {
                     <div className="text-sm space-y-1">
                       <p className="flex items-center">
                         <Info className="h-4 w-4 mr-2 text-blue-600" />
-                        API Version: v38.0
+                        API Version: v2.0
                       </p>
                       <p className="flex items-center">
                         <RefreshCw className="h-4 w-4 mr-2 text-blue-600" />
-                        更新頻度: 最短6時間ごと
+                        更新頻度: 最短12時間ごと
                       </p>
                       <p className="flex items-center">
                         <Shield className="h-4 w-4 mr-2 text-blue-600" />
-                        認証: OAuth 2.0
+                        認証: API Key
                       </p>
                     </div>
                   </div>
 
                   <div className="pt-2">
                     <Button variant="outline" className="w-full" asChild>
-                      <a href="https://www.workday.com/" target="_blank" rel="noopener noreferrer">
+                      <a href="https://persefoni.com/" target="_blank" rel="noopener noreferrer">
                         公式サイトを開く
                       </a>
                     </Button>

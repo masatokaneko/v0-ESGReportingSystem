@@ -17,36 +17,34 @@ import { ArrowLeft, CheckCircle, Info, RefreshCw, Shield } from "lucide-react"
 import Link from "next/link"
 
 const formSchema = z.object({
-  tenantUrl: z.string().url({ message: "有効なURLを入力してください" }),
   clientId: z.string().min(1, { message: "クライアントIDを入力してください" }),
   clientSecret: z.string().min(1, { message: "クライアントシークレットを入力してください" }),
-  username: z.string().min(1, { message: "ユーザー名を入力してください" }),
-  password: z.string().min(1, { message: "パスワードを入力してください" }),
+  refreshToken: z.string().min(1, { message: "リフレッシュトークンを入力してください" }),
   refreshRate: z.string(),
+  folderId: z.string().optional(),
 })
 
 const dataItems = [
-  { id: "headcount", name: "従業員数", description: "部門・拠点ごとの従業員数データ", available: true },
-  { id: "safetyIncident", name: "安全インシデント", description: "安全インシデントの記録と詳細", available: true },
-  { id: "travelData", name: "出張データ", description: "従業員の出張記録と移動距離", available: true },
-  { id: "facilityUsage", name: "施設利用状況", description: "オフィス・施設の利用状況データ", available: false },
-  { id: "commutingData", name: "通勤データ", description: "従業員の通勤方法と距離", available: false },
+  { id: "documents", name: "ドキュメント", description: "Google Docsドキュメント", available: true },
+  { id: "spreadsheets", name: "スプレッドシート", description: "Google スプレッドシート", available: true },
+  { id: "presentations", name: "プレゼンテーション", description: "Google スライド", available: true },
+  { id: "pdfs", name: "PDF", description: "PDFファイル", available: true },
+  { id: "images", name: "画像", description: "画像ファイル", available: false },
 ]
 
-export default function WorkdayPage() {
+export default function GoogleDrivePage() {
   const [isConnected, setIsConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [selectedItems, setSelectedItems] = useState<string[]>(["headcount", "safetyIncident"])
+  const [selectedItems, setSelectedItems] = useState<string[]>(["documents", "spreadsheets"])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      tenantUrl: "",
       clientId: "",
       clientSecret: "",
-      username: "",
-      password: "",
-      refreshRate: "24h",
+      refreshToken: "",
+      refreshRate: "6h",
+      folderId: "",
     },
   })
 
@@ -68,7 +66,7 @@ export default function WorkdayPage() {
   function handleDisconnect() {
     setIsConnected(false)
     form.reset()
-    setSelectedItems(["headcount", "safetyIncident"])
+    setSelectedItems(["documents", "spreadsheets"])
   }
 
   return (
@@ -79,8 +77,8 @@ export default function WorkdayPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">Workday 連携設定</h1>
-        <Badge className="ml-4 bg-purple-600">HR/安全管理</Badge>
+        <h1 className="text-2xl font-bold">Google Drive 連携設定</h1>
+        <Badge className="ml-4 bg-orange-600">ドキュメント</Badge>
       </div>
 
       <div className="grid gap-6">
@@ -89,7 +87,7 @@ export default function WorkdayPage() {
             <CheckCircle className="h-5 w-5 text-green-600" />
             <AlertTitle className="text-green-800">接続済み</AlertTitle>
             <AlertDescription className="text-green-700">
-              Workdayとの接続が確立されています。データの同期は設定された間隔で行われます。
+              Google Driveとの接続が確立されています。データの同期は設定された間隔で行われます。
             </AlertDescription>
           </Alert>
         ) : null}
@@ -106,31 +104,12 @@ export default function WorkdayPage() {
               <TabsContent value="connection">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Workday API 接続</CardTitle>
-                    <CardDescription>Workday APIに接続するための認証情報を入力してください。</CardDescription>
+                    <CardTitle>Google Drive API 接続</CardTitle>
+                    <CardDescription>Google Drive APIに接続するための認証情報を入力してください。</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <Form {...form}>
                       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                        <FormField
-                          control={form.control}
-                          name="tenantUrl"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>テナントURL</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="https://wd3-impl-services1.workday.com/ccx/service/..."
-                                  {...field}
-                                  disabled={isConnected}
-                                />
-                              </FormControl>
-                              <FormDescription>WorkdayテナントのWeb Services APIエンドポイントURL</FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
                         <FormField
                           control={form.control}
                           name="clientId"
@@ -138,9 +117,13 @@ export default function WorkdayPage() {
                             <FormItem>
                               <FormLabel>クライアントID</FormLabel>
                               <FormControl>
-                                <Input placeholder="client_id_xxxxx" {...field} disabled={isConnected} />
+                                <Input
+                                  placeholder="123456789-abcdefg.apps.googleusercontent.com"
+                                  {...field}
+                                  disabled={isConnected}
+                                />
                               </FormControl>
-                              <FormDescription>Workday統合システム管理で取得したクライアントID</FormDescription>
+                              <FormDescription>Google Cloud Consoleで取得したクライアントID</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -160,9 +143,7 @@ export default function WorkdayPage() {
                                   disabled={isConnected}
                                 />
                               </FormControl>
-                              <FormDescription>
-                                Workday統合システム管理で取得したクライアントシークレット
-                              </FormDescription>
+                              <FormDescription>Google Cloud Consoleで取得したクライアントシークレット</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -170,25 +151,10 @@ export default function WorkdayPage() {
 
                         <FormField
                           control={form.control}
-                          name="username"
+                          name="refreshToken"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>ユーザー名</FormLabel>
-                              <FormControl>
-                                <Input placeholder="integration_user@company.com" {...field} disabled={isConnected} />
-                              </FormControl>
-                              <FormDescription>Workday統合用アカウントのユーザー名</FormDescription>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <FormField
-                          control={form.control}
-                          name="password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>パスワード</FormLabel>
+                              <FormLabel>リフレッシュトークン</FormLabel>
                               <FormControl>
                                 <Input
                                   type="password"
@@ -197,7 +163,7 @@ export default function WorkdayPage() {
                                   disabled={isConnected}
                                 />
                               </FormControl>
-                              <FormDescription>Workday統合用アカウントのパスワード</FormDescription>
+                              <FormDescription>OAuth認証フローで取得したリフレッシュトークン</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -216,13 +182,13 @@ export default function WorkdayPage() {
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
+                                  <SelectItem value="1h">1時間ごと</SelectItem>
                                   <SelectItem value="6h">6時間ごと</SelectItem>
                                   <SelectItem value="12h">12時間ごと</SelectItem>
                                   <SelectItem value="24h">24時間ごと</SelectItem>
-                                  <SelectItem value="weekly">週次</SelectItem>
                                 </SelectContent>
                               </Select>
-                              <FormDescription>Workdayからデータを取得する頻度</FormDescription>
+                              <FormDescription>Google Driveからデータを取得する頻度</FormDescription>
                               <FormMessage />
                             </FormItem>
                           )}
@@ -254,7 +220,7 @@ export default function WorkdayPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>取得データ項目</CardTitle>
-                    <CardDescription>Workdayから取得するデータ項目を選択してください。</CardDescription>
+                    <CardDescription>Google Driveから取得するデータ項目を選択してください。</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -296,62 +262,70 @@ export default function WorkdayPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>詳細設定</CardTitle>
-                    <CardDescription>Workdayとの連携に関する詳細設定を行います。</CardDescription>
+                    <CardDescription>Google Driveとの連携に関する詳細設定を行います。</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="historical" disabled={!isConnected} />
-                          <label
-                            htmlFor="historical"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                          >
-                            過去データの一括取得
-                          </label>
-                        </div>
-                        <p className="text-sm text-gray-500">過去12ヶ月分のデータを一括取得します（初回接続時のみ）</p>
-                      </div>
+                    <Form {...form}>
+                      <form className="space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="folderId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>フォルダID</FormLabel>
+                              <FormControl>
+                                <Input placeholder="1AbCdEfGhIjKlMnOpQrStUvWxYz" {...field} disabled={!isConnected} />
+                              </FormControl>
+                              <FormDescription>
+                                特定のフォルダのみデータを取得する場合は、フォルダIDを入力してください。空白の場合はルートフォルダが対象になります。
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="notifications" disabled={!isConnected} />
-                          <label
-                            htmlFor="notifications"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                          >
-                            データ取得エラー通知
-                          </label>
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="includeShared" disabled={!isConnected} />
+                            <label
+                              htmlFor="includeShared"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              共有ファイルを含める
+                            </label>
+                          </div>
+                          <p className="text-sm text-gray-500">
+                            他のユーザーから共有されたファイルも取得対象に含めます
+                          </p>
                         </div>
-                        <p className="text-sm text-gray-500">データ取得に失敗した場合にメール通知を送信します</p>
-                      </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="anonymize" disabled={!isConnected} />
-                          <label
-                            htmlFor="anonymize"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                          >
-                            個人データの匿名化
-                          </label>
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="includeTrash" disabled={!isConnected} />
+                            <label
+                              htmlFor="includeTrash"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              ゴミ箱のファイルを含める
+                            </label>
+                          </div>
+                          <p className="text-sm text-gray-500">ゴミ箱に移動されたファイルも取得対象に含めます</p>
                         </div>
-                        <p className="text-sm text-gray-500">個人を特定できる情報を匿名化して取得します</p>
-                      </div>
 
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox id="aggregate" disabled={!isConnected} />
-                          <label
-                            htmlFor="aggregate"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                          >
-                            データの集計処理
-                          </label>
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox id="notifications" disabled={!isConnected} />
+                            <label
+                              htmlFor="notifications"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              データ取得エラー通知
+                            </label>
+                          </div>
+                          <p className="text-sm text-gray-500">データ取得に失敗した場合にメール通知を送信します</p>
                         </div>
-                        <p className="text-sm text-gray-500">部門・拠点レベルでデータを集計して取得します</p>
-                      </div>
-                    </div>
+                      </form>
+                    </Form>
                   </CardContent>
                   <CardFooter>
                     <Button disabled={!isConnected} className="w-full">
@@ -366,13 +340,13 @@ export default function WorkdayPage() {
           <div>
             <Card>
               <CardHeader>
-                <CardTitle>Workday</CardTitle>
-                <CardDescription>人事・財務管理クラウドプラットフォーム</CardDescription>
+                <CardTitle>Google Drive</CardTitle>
+                <CardDescription>クラウドストレージ・ドキュメント管理</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="rounded-md overflow-hidden">
-                    <img src="/placeholder.svg?key=2m7iz" alt="Workday Platform" className="w-full object-cover" />
+                    <img src="/placeholder.svg?key=googledrive" alt="Google Drive" className="w-full object-cover" />
                   </div>
 
                   <div className="space-y-2">
@@ -380,19 +354,19 @@ export default function WorkdayPage() {
                     <ul className="space-y-1 text-sm">
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        人事データの一元管理
+                        ドキュメント管理
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        安全インシデント管理
+                        スプレッドシート連携
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        出張・経費管理
+                        プレゼンテーション管理
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
-                        施設・資産管理
+                        PDFファイル管理
                       </li>
                     </ul>
                   </div>
@@ -402,11 +376,11 @@ export default function WorkdayPage() {
                     <div className="text-sm space-y-1">
                       <p className="flex items-center">
                         <Info className="h-4 w-4 mr-2 text-blue-600" />
-                        API Version: v38.0
+                        API Version: v3
                       </p>
                       <p className="flex items-center">
                         <RefreshCw className="h-4 w-4 mr-2 text-blue-600" />
-                        更新頻度: 最短6時間ごと
+                        更新頻度: 最短1時間ごと
                       </p>
                       <p className="flex items-center">
                         <Shield className="h-4 w-4 mr-2 text-blue-600" />
@@ -417,7 +391,7 @@ export default function WorkdayPage() {
 
                   <div className="pt-2">
                     <Button variant="outline" className="w-full" asChild>
-                      <a href="https://www.workday.com/" target="_blank" rel="noopener noreferrer">
+                      <a href="https://drive.google.com/" target="_blank" rel="noopener noreferrer">
                         公式サイトを開く
                       </a>
                     </Button>
