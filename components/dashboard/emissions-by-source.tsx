@@ -3,13 +3,11 @@
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 
 const data = [
-  { name: "電力使用", value: 48392, color: "#10b981" },
-  { name: "燃料燃焼", value: 35621, color: "#0ea5e9" },
-  { name: "購入した製品とサービス", value: 12500, color: "#6366f1" },
-  { name: "輸送と配送", value: 9800, color: "#f43f5e" },
-  { name: "資本財", value: 8700, color: "#8b5cf6" },
-  { name: "製品使用", value: 8644, color: "#d946ef" },
-  { name: "その他", value: 19200, color: "#94a3b8" },
+  { name: "電力", value: 5678, color: "#002B5B" },
+  { name: "ガス", value: 2345, color: "#0059B8" },
+  { name: "ガソリン", value: 1111, color: "#0077CC" },
+  { name: "軽油", value: 890, color: "#0095DD" },
+  { name: "その他", value: 2321, color: "#00B3EE" },
 ]
 
 export function EmissionsBySource() {
@@ -20,18 +18,17 @@ export function EmissionsBySource() {
           data={data}
           cx="50%"
           cy="50%"
-          innerRadius={60}
-          outerRadius={100}
-          paddingAngle={1}
-          dataKey="value"
-          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(1)}%`}
           labelLine={false}
+          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+          outerRadius={80}
+          fill="#8884d8"
+          dataKey="value"
         >
           {data.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={entry.color} />
           ))}
         </Pie>
-        <Tooltip formatter={(value: number) => [`${value.toLocaleString()} tCO2e`, ""]} />
+        <Tooltip formatter={(value) => [`${value} t-CO2`, ""]} labelFormatter={(label) => `${label}`} />
         <Legend />
       </PieChart>
     </ResponsiveContainer>
