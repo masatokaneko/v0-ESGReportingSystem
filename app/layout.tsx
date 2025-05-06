@@ -24,7 +24,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <div className="flex min-h-screen">
-            <div className="hidden md:block border-r">
+            <div className="hidden md:block">
               <Sidebar />
             </div>
             <div className="flex-1 flex flex-col">
