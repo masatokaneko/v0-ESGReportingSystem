@@ -1,8 +1,19 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import type { Session, User } from "@supabase/supabase-js"
-import { createClientSupabaseClient } from "@/lib/supabase"
+import { mockAuth } from "@/lib/auth/mock"
+
+type User = {
+  id: string
+  email: string
+  full_name: string
+  role: string
+}
+
+type Session = {
+  user: User
+  expires_at: number
+}
 
 type AuthContextType = {
   user: User | null
@@ -18,25 +29,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const supabase = createClientSupabaseClient()
 
   useEffect(() => {
     // セッションの初期化
     const initializeSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-      setSession(session)
-      setUser(session?.user || null)
-      setIsLoading(false)
+      try {
+        const { session } = await mockAuth.getSession()
+        setSession(session)
+        setUser(session?.user || null)
+      } catch (error) {
+        console.error("Error initializing session:", error)
+      } finally {
+        setIsLoading(false)
+      }
     }
 
     initializeSession()
 
     // 認証状態の変更を監視
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const subscription = mockAuth.onAuthStateChange((_event, session) => {
       setSession(session)
       setUser(session?.user || null)
       setIsLoading(false)
@@ -48,15 +59,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    return { error }
+    try {
+      const { user, error } = await mockAuth.signIn(email, password)
+
+      if (user) {
+        setUser(user)
+        setSession({
+          user,
+          expires_at: Date.now() + 3600000,
+        })
+      }
+
+      return { error }
+    } catch (err) {
+      console.error("Error signing in:", err)
+      return { error: { message: "ログイン処理中にエラーが発生しました。" } }
+    }
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    try {
+      await mockAuth.signOut()
+      setUser(null)
+      setSession(null)
+    } catch (error) {
+      console.error("Error signing out:", error)
+    }
   }
 
   const value = {

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
 
 // 保護されたルートのリスト
 const PROTECTED_ROUTES = ["/dashboard", "/data-entry", "/admin", "/reports", "/approval", "/profile"]
@@ -10,38 +9,30 @@ const ADMIN_ROUTES = ["/admin"]
 
 export async function middleware(request: NextRequest) {
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req: request, res })
-
-  // セッションの取得
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
   const path = request.nextUrl.pathname
+
+  // モック認証のためのクッキーチェック
+  const authCookie = request.cookies.get("mock-auth-session")
+  const isAuthenticated = !!authCookie?.value
+
+  // ユーザーロールの取得（モック）
+  const roleCookie = request.cookies.get("mock-user-role")
+  const userRole = roleCookie?.value || "user"
 
   // ログインページへのリダイレクトが必要かチェック
   const isProtectedRoute = PROTECTED_ROUTES.some((route) => path.startsWith(route))
   const isAdminRoute = ADMIN_ROUTES.some((route) => path.startsWith(route))
 
   // ユーザーがログインしていない場合、保護されたルートへのアクセスを拒否
-  if (isProtectedRoute && !session) {
+  if (isProtectedRoute && !isAuthenticated) {
     const redirectUrl = new URL("/auth/login", request.url)
     redirectUrl.searchParams.set("redirect", path)
     return NextResponse.redirect(redirectUrl)
   }
 
   // 管理者ルートへのアクセス制御（ユーザーロールのチェック）
-  if (isAdminRoute && session) {
-    // ユーザーロールの取得
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("role")
-      .eq("user_id", session.user.id)
-      .single()
-
-    // 管理者でない場合はダッシュボードにリダイレクト
-    if (!profile || profile.role !== "admin") {
-      return NextResponse.redirect(new URL("/dashboard", request.url))
-    }
+  if (isAdminRoute && isAuthenticated && userRole !== "admin") {
+    return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
   return res

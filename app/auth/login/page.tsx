@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertCircle, Info } from "lucide-react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -58,6 +58,19 @@ export default function LoginPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>モック認証</AlertTitle>
+              <AlertDescription>
+                <p>以下のアカウントでログインできます：</p>
+                <ul className="list-disc list-inside mt-2">
+                  <li>管理者: admin@example.com / password</li>
+                  <li>一般ユーザー: user@example.com / password</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+
             <div className="space-y-2">
               <Label htmlFor="email">メールアドレス</Label>
               <Input
