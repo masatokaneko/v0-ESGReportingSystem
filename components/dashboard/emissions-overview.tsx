@@ -1,145 +1,55 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowUpIcon, ArrowDownIcon } from "lucide-react"
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
-type EmissionsOverviewProps = {
-  data: {
-    scope1: number
-    scope2: number
-    scope3: number
-    total: number
-    previousPeriod: {
-      scope1: number
-      scope2: number
-      scope3: number
-      total: number
-    }
-  } | null
-  isLoading: boolean
-}
+const data = [
+  {
+    name: "Scope 1",
+    直接排出: 3456,
+  },
+  {
+    name: "Scope 2",
+    間接排出: 5678,
+  },
+  {
+    name: "Scope 3-1",
+    購入した製品サービス: 1234,
+  },
+  {
+    name: "Scope 3-2",
+    資本財: 567,
+  },
+  {
+    name: "Scope 3-3",
+    燃料エネルギー関連: 345,
+  },
+  {
+    name: "Scope 3-4",
+    "輸送配送(上流)": 678,
+  },
+  {
+    name: "Scope 3-5",
+    事業から出る廃棄物: 234,
+  },
+]
 
-export function EmissionsOverview({ data, isLoading }: EmissionsOverviewProps) {
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
-        </div>
-      </div>
-    )
-  }
-
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center h-[300px]">
-        <p className="text-muted-foreground">データがありません</p>
-      </div>
-    )
-  }
-
-  // 前期比の計算
-  const getPercentChange = (current: number, previous: number) => {
-    if (previous === 0) return 0
-    return ((current - previous) / previous) * 100
-  }
-
-  const scope1Change = getPercentChange(data.scope1, data.previousPeriod.scope1)
-  const scope2Change = getPercentChange(data.scope2, data.previousPeriod.scope2)
-  const scope3Change = getPercentChange(data.scope3, data.previousPeriod.scope3)
-  const totalChange = getPercentChange(data.total, data.previousPeriod.total)
-
+export function EmissionsOverview() {
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <Card>
-        <CardContent className="p-4">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Scope 1</p>
-            <div className="flex items-end justify-between">
-              <p className="text-2xl font-bold">{data.scope1.toLocaleString()} t-CO2e</p>
-              {scope1Change !== 0 && (
-                <div className={`flex items-center ${scope1Change > 0 ? "text-red-500" : "text-green-500"}`}>
-                  {scope1Change > 0 ? (
-                    <ArrowUpIcon className="h-4 w-4 mr-1" />
-                  ) : (
-                    <ArrowDownIcon className="h-4 w-4 mr-1" />
-                  )}
-                  <span className="text-xs font-medium">{Math.abs(scope1Change).toFixed(1)}%</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-4">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Scope 2</p>
-            <div className="flex items-end justify-between">
-              <p className="text-2xl font-bold">{data.scope2.toLocaleString()} t-CO2e</p>
-              {scope2Change !== 0 && (
-                <div className={`flex items-center ${scope2Change > 0 ? "text-red-500" : "text-green-500"}`}>
-                  {scope2Change > 0 ? (
-                    <ArrowUpIcon className="h-4 w-4 mr-1" />
-                  ) : (
-                    <ArrowDownIcon className="h-4 w-4 mr-1" />
-                  )}
-                  <span className="text-xs font-medium">{Math.abs(scope2Change).toFixed(1)}%</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-4">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Scope 3</p>
-            <div className="flex items-end justify-between">
-              <p className="text-2xl font-bold">{data.scope3.toLocaleString()} t-CO2e</p>
-              {scope3Change !== 0 && (
-                <div className={`flex items-center ${scope3Change > 0 ? "text-red-500" : "text-green-500"}`}>
-                  {scope3Change > 0 ? (
-                    <ArrowUpIcon className="h-4 w-4 mr-1" />
-                  ) : (
-                    <ArrowDownIcon className="h-4 w-4 mr-1" />
-                  )}
-                  <span className="text-xs font-medium">{Math.abs(scope3Change).toFixed(1)}%</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="p-4">
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">合計排出量</p>
-            <div className="flex items-end justify-between">
-              <p className="text-2xl font-bold">{data.total.toLocaleString()} t-CO2e</p>
-              {totalChange !== 0 && (
-                <div className={`flex items-center ${totalChange > 0 ? "text-red-500" : "text-green-500"}`}>
-                  {totalChange > 0 ? (
-                    <ArrowUpIcon className="h-4 w-4 mr-1" />
-                  ) : (
-                    <ArrowDownIcon className="h-4 w-4 mr-1" />
-                  )}
-                  <span className="text-xs font-medium">{Math.abs(totalChange).toFixed(1)}%</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <ResponsiveContainer width="100%" height={350}>
+      <BarChart data={data} layout="vertical" margin={{ left: 120 }}>
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis type="number" unit=" t-CO2" />
+        <YAxis dataKey="name" type="category" width={80} />
+        <Tooltip formatter={(value) => [`${value} t-CO2`, ""]} labelFormatter={(label) => `${label}`} />
+        <Legend />
+        <Bar dataKey="直接排出" fill="#002B5B" />
+        <Bar dataKey="間接排出" fill="#0059B8" />
+        <Bar dataKey="購入した製品サービス" fill="#0077CC" />
+        <Bar dataKey="資本財" fill="#0095DD" />
+        <Bar dataKey="燃料エネルギー関連" fill="#00B3EE" />
+        <Bar dataKey="輸送配送(上流)" fill="#00D1FF" />
+        <Bar dataKey="事業から出る廃棄物" fill="#00EFFF" />
+      </BarChart>
+    </ResponsiveContainer>
   )
 }

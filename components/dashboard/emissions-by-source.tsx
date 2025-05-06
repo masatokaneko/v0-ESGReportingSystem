@@ -1,101 +1,36 @@
 "use client"
 
-import { useState } from "react"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Skeleton } from "@/components/ui/skeleton"
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
+import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
 
-type EmissionsBySourceProps = {
-  data: {
-    scope1: { name: string; value: number; color: string }[]
-    scope2: { name: string; value: number; color: string }[]
-    scope3: { name: string; value: number; color: string }[]
-    all: { name: string; value: number; color: string }[]
-  } | null
-  isLoading: boolean
-}
+const data = [
+  { name: "電力", value: 5678, color: "#002B5B" },
+  { name: "ガス", value: 2345, color: "#0059B8" },
+  { name: "ガソリン", value: 1111, color: "#0077CC" },
+  { name: "軽油", value: 890, color: "#0095DD" },
+  { name: "その他", value: 2321, color: "#00B3EE" },
+]
 
-export function EmissionsBySource({ data, isLoading }: EmissionsBySourceProps) {
-  const [activeTab, setActiveTab] = useState("all")
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-8 w-[300px] mx-auto" />
-        <Skeleton className="h-[300px] w-full" />
-      </div>
-    )
-  }
-
-  if (!data) {
-    return (
-      <div className="flex items-center justify-center h-[300px]">
-        <p className="text-muted-foreground">データがありません</p>
-      </div>
-    )
-  }
-
-  const renderActiveTabContent = () => {
-    let chartData
-    switch (activeTab) {
-      case "scope1":
-        chartData = data.scope1
-        break
-      case "scope2":
-        chartData = data.scope2
-        break
-      case "scope3":
-        chartData = data.scope3
-        break
-      default:
-        chartData = data.all
-    }
-
-    if (chartData.length === 0) {
-      return (
-        <div className="flex items-center justify-center h-[300px]">
-          <p className="text-muted-foreground">データがありません</p>
-        </div>
-      )
-    }
-
-    return (
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            labelLine={false}
-            outerRadius={100}
-            fill="#8884d8"
-            dataKey="value"
-            nameKey="name"
-            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
-          >
-            {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip formatter={(value: number) => [`${value.toLocaleString()} t-CO2e`, "排出量"]} />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
-    )
-  }
-
+export function EmissionsBySource() {
   return (
-    <div className="space-y-4">
-      <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="all">全体</TabsTrigger>
-          <TabsTrigger value="scope1">Scope 1</TabsTrigger>
-          <TabsTrigger value="scope2">Scope 2</TabsTrigger>
-          <TabsTrigger value="scope3">Scope 3</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {renderActiveTabContent()}
-    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      <PieChart>
+        <Pie
+          data={data}
+          cx="50%"
+          cy="50%"
+          labelLine={false}
+          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+          outerRadius={80}
+          fill="#8884d8"
+          dataKey="value"
+        >
+          {data.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={entry.color} />
+          ))}
+        </Pie>
+        <Tooltip formatter={(value) => [`${value} t-CO2`, ""]} labelFormatter={(label) => `${label}`} />
+        <Legend />
+      </PieChart>
+    </ResponsiveContainer>
   )
 }
