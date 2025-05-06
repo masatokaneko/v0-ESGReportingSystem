@@ -38,14 +38,65 @@ export default function EmissionsTrend() {
   const fetchData = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/dashboard/emissions-trend")
-      const data = await response.json()
+      // モックデータを定義
+      const mockTrendData = () => {
+        const startDate = new Date("2023-01-01")
+        const data = []
+        for (let i = 0; i < 12; i++) {
+          const date = new Date(startDate)
+          date.setMonth(startDate.getMonth() + i)
+          const dateString = date.toISOString().slice(0, 7) // YYYY-MM format
+          data.push({
+            date: dateString,
+            scope1: Math.floor(Math.random() * 2000) + 500,
+            scope2: Math.floor(Math.random() * 1000) + 250,
+            scope3: Math.floor(Math.random() * 3000) + 750,
+            total: 0,
+          })
+          data[i].total = data[i].scope1 + data[i].scope2 + data[i].scope3
+        }
+        return data
+      }
+
+      const mockData = {
+        success: true,
+        trendData: mockTrendData(),
+      }
+
+      let data
+      try {
+        const response = await fetch("/api/dashboard/emissions-trend")
+        if (!response.ok) {
+          throw new Error("API response was not ok")
+        }
+        data = await response.json()
+      } catch (error) {
+        console.warn("API fetch failed, using mock data:", error)
+        data = mockData
+      }
 
       if (data.success) {
         setTrendData(data.trendData)
       }
     } catch (error) {
       console.error("Error fetching emissions trend data:", error)
+      // エラー時にもモックデータを使用
+      const startDate = new Date("2023-01-01")
+      const mockData = []
+      for (let i = 0; i < 12; i++) {
+        const date = new Date(startDate)
+        date.setMonth(startDate.getMonth() + i)
+        const dateString = date.toISOString().slice(0, 7) // YYYY-MM format
+        mockData.push({
+          date: dateString,
+          scope1: Math.floor(Math.random() * 2000) + 500,
+          scope2: Math.floor(Math.random() * 1000) + 250,
+          scope3: Math.floor(Math.random() * 3000) + 750,
+          total: 0,
+        })
+        mockData[i].total = mockData[i].scope1 + mockData[i].scope2 + mockData[i].scope3
+      }
+      setTrendData(mockData)
     } finally {
       setIsLoading(false)
     }

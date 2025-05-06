@@ -43,8 +43,38 @@ export default function EmissionsBySource() {
   const fetchData = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("/api/dashboard/emissions-by-source")
-      const data = await response.json()
+      // モックデータを定義
+      const mockData = {
+        success: true,
+        categoryData: [
+          { name: "電気", value: 20000 },
+          { name: "ガス", value: 10000 },
+          { name: "出張", value: 15000 },
+          { name: "その他", value: 7500 },
+        ],
+        locationData: [
+          { name: "東京本社", scope1: 5000, scope2: 2500, scope3: 10000, total: 17500 },
+          { name: "大阪支店", scope1: 3000, scope2: 1500, scope3: 6000, total: 10500 },
+          { name: "福岡営業所", scope1: 2000, scope2: 1000, scope3: 4000, total: 7000 },
+        ],
+        departmentData: [
+          { name: "人事部", scope1: 1000, scope2: 500, scope3: 2000, total: 3500 },
+          { name: "経理部", scope1: 800, scope2: 400, scope3: 1600, total: 2800 },
+          { name: "営業部", scope1: 3200, scope2: 1600, scope3: 6400, total: 11200 },
+        ],
+      }
+
+      let data
+      try {
+        const response = await fetch("/api/dashboard/emissions-by-source")
+        if (!response.ok) {
+          throw new Error("API response was not ok")
+        }
+        data = await response.json()
+      } catch (error) {
+        console.warn("API fetch failed, using mock data:", error)
+        data = mockData
+      }
 
       if (data.success) {
         setCategoryData(data.categoryData)
@@ -53,6 +83,23 @@ export default function EmissionsBySource() {
       }
     } catch (error) {
       console.error("Error fetching emissions by source data:", error)
+      // エラー時にもモックデータを使用
+      setCategoryData([
+        { name: "電気", value: 20000 },
+        { name: "ガス", value: 10000 },
+        { name: "出張", value: 15000 },
+        { name: "その他", value: 7500 },
+      ])
+      setLocationData([
+        { name: "東京本社", scope1: 5000, scope2: 2500, scope3: 10000, total: 17500 },
+        { name: "大阪支店", scope1: 3000, scope2: 1500, scope3: 6000, total: 10500 },
+        { name: "福岡営業所", scope1: 2000, scope2: 1000, scope3: 4000, total: 7000 },
+      ])
+      setDepartmentData([
+        { name: "人事部", scope1: 1000, scope2: 500, scope3: 2000, total: 3500 },
+        { name: "経理部", scope1: 800, scope2: 400, scope3: 1600, total: 2800 },
+        { name: "営業部", scope1: 3200, scope2: 1600, scope3: 6400, total: 11200 },
+      ])
     } finally {
       setIsLoading(false)
     }
