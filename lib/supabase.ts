@@ -1,29 +1,30 @@
-import { mockAuth, mockDB } from "./auth/mock"
+import { mockDB } from "./mock-data-store"
 
-// サーバーサイド用のモックSupabaseクライアント
-export const createServerSupabaseClient = () => {
-  // モックデータベースとモック認証を組み合わせたクライアントを返す
+// クライアントサイド用のモックSupabaseクライアント
+export const createClientSupabaseClient = () => {
+  // モックデータストアを使用するクライアントを返す
   return {
-    auth: mockAuth,
     from: (table: string) => {
       return {
         select: (columns = "*") => {
+          // テーブルに応じたモックデータを返す
+          const mockData = mockDB.getAll(table as any)
+
           return {
             eq: (column: string, value: any) => {
+              const filteredData = mockData.filter((item: any) => item[column] === value)
               return {
                 single: () => {
-                  const item = mockDB.getOne(table as any, column, value)
-                  return { data: item, error: null }
+                  return { data: filteredData[0] || null, error: null }
                 },
                 limit: (limit: number) => {
-                  const items = mockDB.getBy(table as any, column, value).slice(0, limit)
-                  return { data: items, error: null }
+                  return { data: filteredData.slice(0, limit), error: null }
                 },
               }
             },
             order: (column: string, { ascending = true } = {}) => {
-              const items = mockDB.getAll(table as any)
-              return { data: items, error: null }
+              // 並べ替えはモックでは実装しない
+              return { data: mockData, error: null }
             },
           }
         },
@@ -34,7 +35,7 @@ export const createServerSupabaseClient = () => {
         update: (data: any) => {
           return {
             eq: (column: string, value: any) => {
-              const updatedItem = mockDB.update(table as any, column, value, data)
+              const updatedItem = mockDB.update(table as any, "id", value, data)
               return { data: updatedItem, error: null }
             },
           }
@@ -42,75 +43,43 @@ export const createServerSupabaseClient = () => {
         delete: () => {
           return {
             eq: (column: string, value: any) => {
-              const deletedItem = mockDB.delete(table as any, column, value)
-              return { data: deletedItem, error: null }
+              mockDB.delete(table, "id", value)
+              return { data: null, error: null }
             },
           }
         },
       }
     },
-    rpc: (functionName: string, params: any) => {
-      // モックRPC関数の実装
-      // ダッシュボードデータなどを返す
-      if (functionName === "get_emissions_overview") {
-        return {
-          data: [
-            {
-              scope1: 1200,
-              scope2: 3500,
-              scope3: 5800,
-              total: 10500,
-              previousPeriod: {
-                scope1: 1300,
-                scope2: 3200,
-                scope3: 6000,
-                total: 10500,
-              },
-            },
-          ],
-          error: null,
+    auth: {
+      signInWithPassword: async ({ email, password }: { email: string; password: string }) => {
+        const user = mockDB.getOne("users", "email", email)
+        if (user && user.password === password) {
+          return { data: { user }, error: null }
         }
-      }
-
-      if (functionName === "get_emissions_by_source") {
-        return {
-          data: [
-            { scope: "Scope1", category: "燃料", emissions: 800 },
-            { scope: "Scope1", category: "輸送", emissions: 400 },
-            { scope: "Scope2", category: "電力", emissions: 3500 },
-            { scope: "Scope3", category: "出張", emissions: 1200 },
-            { scope: "Scope3", category: "通勤", emissions: 800 },
-            { scope: "Scope3", category: "廃棄物", emissions: 1800 },
-            { scope: "Scope3", category: "購入した製品", emissions: 2000 },
-          ],
-          error: null,
-        }
-      }
-
-      if (functionName === "get_emissions_trend") {
-        const months = ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01", "2023-06-01"]
-        const data = []
-
-        for (const month of months) {
-          data.push({ scope: "Scope1", month_date: month, emissions: Math.floor(Math.random() * 500) + 800 })
-          data.push({ scope: "Scope2", month_date: month, emissions: Math.floor(Math.random() * 500) + 2800 })
-          data.push({ scope: "Scope3", month_date: month, emissions: Math.floor(Math.random() * 1000) + 4500 })
-        }
-
-        return { data, error: null }
-      }
-
-      return { data: null, error: null }
+        return { data: { user: null }, error: { message: "Invalid login credentials" } }
+      },
+      updateUser: async ({ password }: { password: string }) => {
+        // パスワード更新のモック
+        return { data: {}, error: null }
+      },
+      signOut: async () => {
+        return { error: null }
+      },
+      admin: {
+        createUser: async (userData: any) => {
+          const newUser = mockDB.insert("users", {
+            email: userData.email,
+            password: userData.password || "password",
+            full_name: userData.user_metadata?.full_name || "",
+            role: "user",
+          })
+          return { data: { user: newUser }, error: null }
+        },
+        deleteUser: async (userId: string) => {
+          mockDB.delete("users", "id", userId)
+          return { error: null }
+        },
+      },
     },
   }
-}
-
-// クライアントサイド用のモックSupabaseクライアント（シングルトンパターン）
-let clientSupabaseClient: ReturnType<typeof createServerSupabaseClient> | null = null
-
-export const createClientSupabaseClient = () => {
-  if (clientSupabaseClient) return clientSupabaseClient
-
-  clientSupabaseClient = createServerSupabaseClient()
-  return clientSupabaseClient
 }

@@ -4,7 +4,6 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/auth-context"
-import { createClientSupabaseClient } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +11,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { Loader2 } from "lucide-react"
+import { mockDB } from "@/lib/mock-data-store"
 
 type UserProfile = {
   id: string
@@ -37,7 +37,6 @@ export default function ProfilePage() {
     confirm_password: "",
   })
 
-  const supabase = createClientSupabaseClient()
   const { toast } = useToast()
 
   // プロフィール情報の取得
@@ -48,30 +47,19 @@ export default function ProfilePage() {
       setIsLoading(true)
       try {
         // ユーザープロファイルの取得
-        const { data, error } = await supabase
-          .from("user_profiles")
-          .select(`
-            id,
-            user_id,
-            email,
-            full_name,
-            role,
-            department_id,
-            departments(name)
-          `)
-          .eq("user_id", user.id)
-          .single()
-
-        if (error) throw error
+        const userProfile = mockDB.getOne("users", "id", user.id)
+        const department = userProfile?.department_id
+          ? mockDB.getOne("departments", "id", userProfile.department_id)
+          : null
 
         const profileData = {
-          ...data,
-          department_name: data.departments?.name || "-",
+          ...userProfile,
+          department_name: department?.name || "-",
         }
 
-        setProfile(profileData)
+        setProfile(profileData as UserProfile)
         setProfileForm({
-          full_name: profileData.full_name,
+          full_name: profileData?.full_name || "",
         })
       } catch (error) {
         console.error("Error fetching profile:", error)
@@ -95,14 +83,10 @@ export default function ProfilePage() {
 
     setIsSaving(true)
     try {
-      const { error } = await supabase
-        .from("user_profiles")
-        .update({
-          full_name: profileForm.full_name,
-        })
-        .eq("user_id", user.id)
-
-      if (error) throw error
+      // モックデータストアでユーザー情報を更新
+      mockDB.update("users", "id", user.id, {
+        full_name: profileForm.full_name,
+      })
 
       toast({
         title: "更新完了",
@@ -110,9 +94,8 @@ export default function ProfilePage() {
       })
 
       // プロフィール情報を再取得
-      const { data } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
-
-      setProfile(data)
+      const updatedProfile = mockDB.getOne("users", "id", user.id)
+      setProfile(updatedProfile as UserProfile)
     } catch (error: any) {
       console.error("Error updating profile:", error)
       toast({
@@ -143,12 +126,9 @@ export default function ProfilePage() {
     setIsSaving(true)
     try {
       // 現在のパスワードで認証
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: user.email!,
-        password: passwordForm.current_password,
-      })
+      const userProfile = mockDB.getOne("users", "id", user.id)
 
-      if (signInError) {
+      if (userProfile?.password !== passwordForm.current_password) {
         toast({
           title: "エラー",
           description: "現在のパスワードが正しくありません",
@@ -159,11 +139,9 @@ export default function ProfilePage() {
       }
 
       // パスワード更新
-      const { error } = await supabase.auth.updateUser({
+      mockDB.update("users", "id", user.id, {
         password: passwordForm.new_password,
       })
-
-      if (error) throw error
 
       toast({
         title: "更新完了",

@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { BarChart3, FileText, Settings, Users, LogOut, Menu, X, User, CheckSquare, Home, Upload } from "lucide-react"
-import { createClientSupabaseClient } from "@/lib/supabase/supabase"
+import { mockDB } from "@/lib/mock-data-store"
 
 export default function DashboardLayout({
   children,
@@ -35,11 +35,10 @@ export default function DashboardLayout({
       if (!user) return
 
       try {
-        const supabase = createClientSupabaseClient()
-        const { data, error } = await supabase.from("user_profiles").select("role").eq("user_id", user.id).single()
-
-        if (error) throw error
-        setUserRole(data.role)
+        const userProfile = mockDB.getOne("users", "id", user.id)
+        if (userProfile) {
+          setUserRole(userProfile.role)
+        }
       } catch (error) {
         console.error("Error fetching user role:", error)
       }

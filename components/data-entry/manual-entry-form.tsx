@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
-import { createClientSupabaseClient } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { ja } from "date-fns/locale"
 import { useAuth } from "@/contexts/auth-context"
+import { mockDB } from "@/lib/mock-data-store"
 
 type Location = {
   id: string
@@ -47,7 +47,6 @@ export function ManualEntryForm() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { user } = useAuth()
   const { toast } = useToast()
-  const supabase = createClientSupabaseClient()
 
   const [formData, setFormData] = useState({
     location_id: "",
@@ -64,32 +63,16 @@ export function ManualEntryForm() {
       setIsLoading(true)
       try {
         // 拠点データの取得
-        const { data: locationsData, error: locationsError } = await supabase
-          .from("locations")
-          .select("id, name")
-          .order("name")
-
-        if (locationsError) throw locationsError
-        setLocations(locationsData || [])
+        const locationsData = mockDB.getAll("locations")
+        setLocations(locationsData)
 
         // 部門データの取得
-        const { data: departmentsData, error: departmentsError } = await supabase
-          .from("departments")
-          .select("id, name, location_id")
-          .order("name")
-
-        if (departmentsError) throw departmentsError
-        setDepartments(departmentsData || [])
+        const departmentsData = mockDB.getAll("departments")
+        setDepartments(departmentsData)
 
         // 排出係数データの取得
-        const { data: factorsData, error: factorsError } = await supabase
-          .from("emission_factors")
-          .select("id, name, category, scope, unit, value")
-          .eq("is_active", true)
-          .order("name")
-
-        if (factorsError) throw factorsError
-        setEmissionFactors(factorsData || [])
+        const factorsData = mockDB.getAll("emission_factors").filter((factor) => factor.is_active)
+        setEmissionFactors(factorsData)
 
         // 初期値の設定
         if (locationsData && locationsData.length > 0) {
@@ -180,7 +163,7 @@ export function ManualEntryForm() {
       const emissions = formData.activity_data * selectedFactor.value
 
       // データエントリの登録
-      const { error } = await supabase.from("data_entries").insert({
+      mockDB.insert("data_entries", {
         user_id: user.id,
         location_id: formData.location_id,
         department_id: formData.department_id,
@@ -191,8 +174,6 @@ export function ManualEntryForm() {
         notes: formData.notes,
         status: "pending", // 承認待ち状態
       })
-
-      if (error) throw error
 
       toast({
         title: "登録完了",

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClientSupabaseClient } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +19,7 @@ import { CheckCircle, XCircle, Eye, AlertCircle, CheckCircle2, XCircleIcon } fro
 import { useAuth } from "@/contexts/auth-context"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { mockDB } from "@/lib/mock-data-store"
 
 type DataEntry = {
   id: string
@@ -55,34 +55,30 @@ export default function ApprovalPage() {
   const [rejectionReason, setRejectionReason] = useState("")
   const { user } = useAuth()
   const { toast } = useToast()
-  const supabase = createClientSupabaseClient()
 
   // データエントリの取得
   const fetchEntries = async () => {
     setIsLoading(true)
     try {
-      const { data, error } = await supabase
-        .from("data_entries")
-        .select(`
-          *,
-          user_profiles(email),
-          locations(name),
-          departments(name),
-          emission_factors(name, unit)
-        `)
-        .order("created_at", { ascending: false })
+      // モックデータストアからデータを取得
+      const dataEntries = mockDB.getAll("data_entries")
 
-      if (error) throw error
+      // 関連データを結合
+      const formattedEntries = dataEntries.map((entry) => {
+        const userProfile = mockDB.getOne("users", "id", entry.user_id)
+        const location = mockDB.getOne("locations", "id", entry.location_id)
+        const department = mockDB.getOne("departments", "id", entry.department_id)
+        const emissionFactor = mockDB.getOne("emission_factors", "id", entry.emission_factor_id)
 
-      // データの整形
-      const formattedEntries = data.map((entry: any) => ({
-        ...entry,
-        user_email: entry.user_profiles?.email || "-",
-        location_name: entry.locations?.name || "-",
-        department_name: entry.departments?.name || "-",
-        emission_factor_name: entry.emission_factors?.name || "-",
-        emission_factor_unit: entry.emission_factors?.unit || "-",
-      }))
+        return {
+          ...entry,
+          user_email: userProfile?.email || "-",
+          location_name: location?.name || "-",
+          department_name: department?.name || "-",
+          emission_factor_name: emissionFactor?.name || "-",
+          emission_factor_unit: emissionFactor?.unit || "-",
+        }
+      })
 
       setEntries(formattedEntries)
       filterEntries(formattedEntries, activeTab)
@@ -140,15 +136,11 @@ export default function ApprovalPage() {
 
     setIsProcessing(true)
     try {
-      const { error } = await supabase
-        .from("data_entries")
-        .update({
-          status: "approved",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", selectedEntry.id)
-
-      if (error) throw error
+      // モックデータストアでデータを更新
+      mockDB.update("data_entries", "id", selectedEntry.id, {
+        status: "approved",
+        updated_at: new Date().toISOString(),
+      })
 
       toast({
         title: "承認完了",
@@ -184,16 +176,12 @@ export default function ApprovalPage() {
 
     setIsProcessing(true)
     try {
-      const { error } = await supabase
-        .from("data_entries")
-        .update({
-          status: "rejected",
-          rejection_reason: rejectionReason,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", selectedEntry.id)
-
-      if (error) throw error
+      // モックデータストアでデータを更新
+      mockDB.update("data_entries", "id", selectedEntry.id, {
+        status: "rejected",
+        rejection_reason: rejectionReason,
+        updated_at: new Date().toISOString(),
+      })
 
       toast({
         title: "却下完了",

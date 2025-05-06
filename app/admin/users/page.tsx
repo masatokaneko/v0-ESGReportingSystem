@@ -70,7 +70,7 @@ export default function UsersPage() {
       if (error) throw error
 
       // データの整形
-      const formattedUsers = profiles.map((profile: any) => ({
+      const formattedUsers = (profiles || []).map((profile: any) => ({
         ...profile,
         department_name: profile.departments?.name || "-",
       }))

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClientSupabaseClient } from "@/lib/supabase"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -10,6 +9,7 @@ import { EmissionsOverview } from "@/components/dashboard/emissions-overview"
 import { EmissionsBySource } from "@/components/dashboard/emissions-by-source"
 import { EmissionsTrend } from "@/components/dashboard/emissions-trend"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
+import { mockDB } from "@/lib/mock-data-store"
 
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -17,7 +17,6 @@ export default function DashboardPage() {
   const [year, setYear] = useState(new Date().getFullYear().toString())
   const [dashboardData, setDashboardData] = useState<any>(null)
   const { toast } = useToast()
-  const supabase = createClientSupabaseClient()
 
   // ダッシュボードデータの取得
   const fetchDashboardData = async () => {
@@ -54,13 +53,8 @@ export default function DashboardPage() {
         endDate = `${currentYear}-${currentMonth.toString().padStart(2, "0")}-${lastDay}`
       }
 
-      // APIからデータを取得
-      const response = await fetch(`/api/dashboard/summary?startDate=${startDate}&endDate=${endDate}`)
-      if (!response.ok) {
-        throw new Error("Failed to fetch dashboard data")
-      }
-
-      const data = await response.json()
+      // モックデータストアからデータを取得
+      const data = mockDB.getDashboardSummary(startDate, endDate)
       setDashboardData(data)
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
