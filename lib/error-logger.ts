@@ -1,3 +1,5 @@
+import { executeQuery } from "@/lib/neon"
+
 export type ErrorSeverity = "info" | "warning" | "error" | "critical"
 export type ErrorStatus = "open" | "in_progress" | "resolved" | "ignored"
 
@@ -24,17 +26,33 @@ export async function logServerError(error: Error | unknown, context?: Record<st
   console.error("Server Error:", error, context)
 
   try {
-    // 本番環境では、エラーログデータベースにエラーを記録することも可能
+    // 本番環境では、エラーログデータベースにエラーを記録する
     if (process.env.NODE_ENV === "production") {
-      // 例: データベースにエラーを記録
-      // const sql = neon(process.env.NEON_DATABASE_URL);
-      // await sql`
-      //   INSERT INTO error_logs (source, message, stack, context, created_at)
-      //   VALUES ('server', ${error instanceof Error ? error.message : String(error)},
-      //           ${error instanceof Error ? error.stack : null},
-      //           ${JSON.stringify(context)},
-      //           NOW())
-      // `;
+      const errorData = {
+        error_type: error instanceof Error ? error.name : "Unknown",
+        message: error instanceof Error ? error.message : String(error),
+        stack_trace: error instanceof Error ? error.stack : null,
+        context: context ? JSON.stringify(context) : null,
+        severity: "error" as ErrorSeverity,
+        status: "open" as ErrorStatus,
+      }
+
+      const query = `
+        INSERT INTO error_logs (
+          error_type, message, stack_trace, context, severity, status
+        ) VALUES (
+          $1, $2, $3, $4::jsonb, $5, $6
+        )
+      `
+
+      await executeQuery(query, [
+        errorData.error_type,
+        errorData.message,
+        errorData.stack_trace,
+        errorData.context,
+        errorData.severity,
+        errorData.status,
+      ])
     }
   } catch (logError) {
     console.error("Failed to log server error:", logError)
@@ -49,21 +67,22 @@ export async function logServerError(error: Error | unknown, context?: Record<st
 export async function logClientError(error: Error | unknown, context?: Record<string, any>) {
   console.error("Client Error:", error, context)
 
+  // クライアントサイドのエラーはAPIを通じてサーバーに送信する
   try {
-    // 本番環境では、エラーログAPIにエラーを送信することも可能
-    if (process.env.NODE_ENV === "production") {
-      // 例: エラーログAPIにエラーを送信
-      // await fetch('/api/error-logs', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({
-      //     source: 'client',
-      //     error: error instanceof Error ? error.message : String(error),
-      //     stack: error instanceof Error ? error.stack : undefined,
-      //     context
-      //   })
-      // });
-    }
+    await fetch("/api/error-logs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        error_type: error instanceof Error ? error.name : "Unknown",
+        message: error instanceof Error ? error.message : String(error),
+        stack_trace: error instanceof Error ? error.stack : null,
+        context,
+        severity: "error",
+        status: "open",
+      }),
+    })
   } catch (logError) {
     console.error("Failed to log client error:", logError)
   }

@@ -9,13 +9,13 @@ import { EmissionsTrend } from "@/components/dashboard/emissions-trend"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { toast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, RefreshCw } from "lucide-react"
+import { AlertCircle, Database, RefreshCw } from "lucide-react"
 
 interface DashboardSummary {
   totalEmission: number
   scopeData: {
     scope1: number
-    scope2: 0
+    scope2: number
     scope3: number
   }
   emissionsBySource: Array<{ name: string; value: number }>
@@ -38,6 +38,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [errorDetails, setErrorDetails] = useState<string | null>(null)
   const [isDbInitialized, setIsDbInitialized] = useState(true)
+  const [isCreatingTables, setIsCreatingTables] = useState(false)
 
   const fetchDashboardData = async () => {
     try {
@@ -63,6 +64,11 @@ export default function DashboardPage() {
             const errorData = JSON.parse(errorText)
             errorMessage = errorData.error || "Failed to fetch dashboard data"
             errorDetailsMessage = errorData.message || errorText
+
+            // テーブルが存在しないエラーの場合
+            if (errorMessage.includes("Required table does not exist")) {
+              setIsDbInitialized(false)
+            }
           } catch (parseError) {
             // JSONパースに失敗した場合はテキストをそのまま使用
             errorDetailsMessage = errorText.substring(0, 500)
@@ -82,6 +88,7 @@ export default function DashboardPage() {
         throw new Error(dashboardData.error, { cause: dashboardData.message })
       }
 
+      setIsDbInitialized(true)
       setSummary(dashboardData)
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
@@ -118,6 +125,43 @@ export default function DashboardPage() {
     }
   }
 
+  const createDatabaseTables = async () => {
+    try {
+      setIsCreatingTables(true)
+
+      const response = await fetch("/api/setup/create-tables", {
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      if (!data.success) {
+        throw new Error(data.message || "Failed to create database tables")
+      }
+
+      toast({
+        title: "成功",
+        description: "データベーステーブルの作成に成功しました。",
+      })
+
+      // テーブル作成後にダッシュボードデータを再取得
+      await fetchDashboardData()
+    } catch (error) {
+      console.error("Error creating database tables:", error)
+      toast({
+        title: "エラー",
+        description: "データベーステーブルの作成に失敗しました。",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreatingTables(false)
+    }
+  }
+
   useEffect(() => {
     fetchDashboardData()
   }, [])
@@ -126,10 +170,18 @@ export default function DashboardPage() {
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">ダッシュボード</h2>
-        <Button variant="outline" size="sm" onClick={fetchDashboardData} disabled={isLoading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-          更新
-        </Button>
+        <div className="flex gap-2">
+          {!isDbInitialized && (
+            <Button variant="outline" size="sm" onClick={createDatabaseTables} disabled={isCreatingTables}>
+              <Database className={`mr-2 h-4 w-4 ${isCreatingTables ? "animate-pulse" : ""}`} />
+              テーブル作成
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={fetchDashboardData} disabled={isLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            更新
+          </Button>
+        </div>
       </div>
 
       {!isDbInitialized && (
@@ -140,14 +192,20 @@ export default function DashboardPage() {
             </div>
             <div className="ml-3">
               <p className="text-sm text-yellow-700">
-                データベース接続が初期化されていません。環境変数を設定してください。
-                <a
-                  href="/admin/system-status"
-                  className="font-medium text-yellow-700 underline hover:text-yellow-600 ml-1"
-                >
-                  システムステータスを確認
-                </a>
+                データベーステーブルが存在しません。「テーブル作成」ボタンをクリックして、必要なテーブルを作成してください。
               </p>
+              <div className="mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={createDatabaseTables}
+                  disabled={isCreatingTables}
+                  className="text-yellow-700 hover:text-yellow-800 border-yellow-300 hover:bg-yellow-50"
+                >
+                  <Database className={`mr-2 h-4 w-4 ${isCreatingTables ? "animate-pulse" : ""}`} />
+                  テーブル作成
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -182,6 +240,7 @@ export default function DashboardPage() {
           <TabsTrigger value="overview">概要</TabsTrigger>
           <TabsTrigger value="analytics">分析</TabsTrigger>
           <TabsTrigger value="reports">レポート</TabsTrigger>
+          <TabsTrigger value="admin">管理</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -287,6 +346,36 @@ export default function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <RecentActivity data={summary?.recentActivities || []} />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+        <TabsContent value="admin" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>システム管理</CardTitle>
+                <CardDescription>システム管理機能へのリンク</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button variant="outline" className="w-full justify-start" asChild>
+                  <a href="/admin/error-logs">
+                    <AlertCircle className="mr-2 h-4 w-4" />
+                    エラーログ
+                  </a>
+                </Button>
+                <Button variant="outline" className="w-full justify-start" asChild>
+                  <a
+                    href="/api/setup/create-tables"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      createDatabaseTables()
+                    }}
+                  >
+                    <Database className="mr-2 h-4 w-4" />
+                    データベーステーブル作成
+                  </a>
+                </Button>
               </CardContent>
             </Card>
           </div>
