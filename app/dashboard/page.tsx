@@ -142,7 +142,7 @@ export default function DashboardPage() {
             <Card className="col-span-4">
               <CardHeader>
                 <CardTitle>排出量の概要</CardTitle>
-                <CardDescription>Scope別・カテゴリ別の排出量</CardDescription>
+                <CardDescription>Scope別カテゴリ別の排出量</CardDescription>
               </CardHeader>
               <CardContent>
                 <EmissionsOverview />
