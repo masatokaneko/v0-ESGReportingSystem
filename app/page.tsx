@@ -1,246 +1,21 @@
-"use client"
-
-import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmissionsOverview } from "@/components/dashboard/emissions-overview"
 import { EmissionsBySource } from "@/components/dashboard/emissions-by-source"
 import { EmissionsTrend } from "@/components/dashboard/emissions-trend"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
-import { toast } from "@/hooks/use-toast"
-import { Button } from "@/components/ui/button"
-import { AlertCircle, Database, RefreshCw } from "lucide-react"
-
-interface DashboardSummary {
-  totalEmission: number
-  scopeData: {
-    scope1: number
-    scope2: number
-    scope3: number
-  }
-  emissionsBySource: Array<{ name: string; value: number }>
-  emissionsTrend: Array<{ month: string; emissions: number }>
-  recentActivities: Array<{
-    id: string
-    action: string
-    user: string
-    timestamp: string
-    details: string
-    status: string
-  }>
-}
-
-export const dynamic = "force-dynamic"
 
 export default function DashboardPage() {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [errorDetails, setErrorDetails] = useState<string | null>(null)
-  const [isDbInitialized, setIsDbInitialized] = useState(true)
-  const [isCreatingTables, setIsCreatingTables] = useState(false)
-
-  const fetchDashboardData = async () => {
-    try {
-      setIsLoading(true)
-      setError(null)
-      setErrorDetails(null)
-
-      console.log("Fetching dashboard data...")
-      const response = await fetch("/api/dashboard/summary")
-
-      // レスポンスのステータスコードをチェック
-      if (!response.ok) {
-        let errorMessage = `API error: ${response.status} ${response.statusText}`
-        let errorDetailsMessage = null
-
-        try {
-          // レスポンスをテキストとして読み取る
-          const errorText = await response.text()
-          console.error("API error response:", errorText)
-
-          try {
-            // JSONとしてパースを試みる
-            const errorData = JSON.parse(errorText)
-            errorMessage = errorData.error || "Failed to fetch dashboard data"
-            errorDetailsMessage = errorData.message || errorText
-
-            // テーブルが存在しないエラーの場合
-            if (errorMessage.includes("Required table does not exist")) {
-              setIsDbInitialized(false)
-            }
-          } catch (parseError) {
-            // JSONパースに失敗した場合はテキストをそのまま使用
-            errorDetailsMessage = errorText.substring(0, 500)
-          }
-        } catch (textError) {
-          // テキスト読み取りに失敗した場合
-          errorDetailsMessage = "Could not read error response"
-        }
-
-        throw new Error(errorMessage, { cause: errorDetailsMessage })
-      }
-
-      const dashboardData = await response.json()
-
-      // エラーフィールドをチェック
-      if (dashboardData.error) {
-        throw new Error(dashboardData.error, { cause: dashboardData.message })
-      }
-
-      setIsDbInitialized(true)
-      setSummary(dashboardData)
-    } catch (error) {
-      console.error("Error fetching dashboard data:", error)
-
-      // エラーメッセージの設定
-      if (error instanceof Error) {
-        setError(error.message)
-        setErrorDetails((error.cause as string) || null)
-      } else {
-        setError("Unknown error")
-        setErrorDetails(null)
-      }
-
-      toast({
-        title: "エラー",
-        description: "ダッシュボードデータの取得に失敗しました。",
-        variant: "destructive",
-      })
-
-      // エラー時にもデフォルトデータを設定
-      setSummary({
-        totalEmission: 0,
-        scopeData: {
-          scope1: 0,
-          scope2: 0,
-          scope3: 0,
-        },
-        emissionsBySource: [],
-        emissionsTrend: [],
-        recentActivities: [],
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const createDatabaseTables = async () => {
-    try {
-      setIsCreatingTables(true)
-
-      const response = await fetch("/api/setup/create-tables", {
-        method: "POST",
-      })
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`)
-      }
-
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.message || "Failed to create database tables")
-      }
-
-      toast({
-        title: "成功",
-        description: "データベーステーブルの作成に成功しました。",
-      })
-
-      // テーブル作成後にダッシュボードデータを再取得
-      await fetchDashboardData()
-    } catch (error) {
-      console.error("Error creating database tables:", error)
-      toast({
-        title: "エラー",
-        description: "データベーステーブルの作成に失敗しました。",
-        variant: "destructive",
-      })
-    } finally {
-      setIsCreatingTables(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">ダッシュボード</h2>
-        <div className="flex gap-2">
-          {!isDbInitialized && (
-            <Button variant="outline" size="sm" onClick={createDatabaseTables} disabled={isCreatingTables}>
-              <Database className={`mr-2 h-4 w-4 ${isCreatingTables ? "animate-pulse" : ""}`} />
-              テーブル作成
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={fetchDashboardData} disabled={isLoading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            更新
-          </Button>
-        </div>
       </div>
-
-      {!isDbInitialized && (
-        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-5 w-5 text-yellow-400" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
-                データベーステーブルが存在しません。「テーブル作成」ボタンをクリックして、必要なテーブルを作成してください。
-              </p>
-              <div className="mt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={createDatabaseTables}
-                  disabled={isCreatingTables}
-                  className="text-yellow-700 hover:text-yellow-800 border-yellow-300 hover:bg-yellow-50"
-                >
-                  <Database className={`mr-2 h-4 w-4 ${isCreatingTables ? "animate-pulse" : ""}`} />
-                  テーブル作成
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-5 w-5 text-red-400" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium text-red-800">データ取得エラー: {error}</p>
-              {errorDetails && <p className="mt-1 text-sm text-red-700 whitespace-pre-wrap">詳細: {errorDetails}</p>}
-              <div className="mt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchDashboardData}
-                  className="text-red-700 hover:text-red-800 border-red-300 hover:bg-red-50"
-                >
-                  再試行
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">概要</TabsTrigger>
           <TabsTrigger value="analytics">分析</TabsTrigger>
           <TabsTrigger value="reports">レポート</TabsTrigger>
-          <TabsTrigger value="admin">管理</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -249,16 +24,8 @@ export default function DashboardPage() {
                 <CardTitle className="text-sm font-medium">総GHG排出量</CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {summary && summary.totalEmission ? (summary.totalEmission / 1000).toFixed(2) : "0"} t-CO2
-                    </div>
-                    <p className="text-xs text-muted-foreground">前年比 +2.5%</p>
-                  </>
-                )}
+                <div className="text-2xl font-bold">12,345 t-CO2</div>
+                <p className="text-xs text-muted-foreground">前年比 +2.5%</p>
               </CardContent>
             </Card>
             <Card>
@@ -266,19 +33,8 @@ export default function DashboardPage() {
                 <CardTitle className="text-sm font-medium">Scope 1排出量</CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {summary && summary.scopeData && summary.scopeData.scope1
-                        ? (summary.scopeData.scope1 / 1000).toFixed(2)
-                        : "0"}{" "}
-                      t-CO2
-                    </div>
-                    <p className="text-xs text-muted-foreground">前年比 -1.2%</p>
-                  </>
-                )}
+                <div className="text-2xl font-bold">3,456 t-CO2</div>
+                <p className="text-xs text-muted-foreground">前年比 -1.2%</p>
               </CardContent>
             </Card>
             <Card>
@@ -286,19 +42,8 @@ export default function DashboardPage() {
                 <CardTitle className="text-sm font-medium">Scope 2排出量</CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoading ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                ) : (
-                  <>
-                    <div className="text-2xl font-bold">
-                      {summary && summary.scopeData && summary.scopeData.scope2
-                        ? (summary.scopeData.scope2 / 1000).toFixed(2)
-                        : "0"}{" "}
-                      t-CO2
-                    </div>
-                    <p className="text-xs text-muted-foreground">前年比 +4.3%</p>
-                  </>
-                )}
+                <div className="text-2xl font-bold">5,678 t-CO2</div>
+                <p className="text-xs text-muted-foreground">前年比 +4.3%</p>
               </CardContent>
             </Card>
             <Card>
@@ -317,7 +62,7 @@ export default function DashboardPage() {
                 <CardTitle>排出量推移</CardTitle>
               </CardHeader>
               <CardContent className="pl-2">
-                <EmissionsTrend data={summary?.emissionsTrend || []} />
+                <EmissionsTrend />
               </CardContent>
             </Card>
             <Card className="col-span-3">
@@ -325,7 +70,7 @@ export default function DashboardPage() {
                 <CardTitle>排出源内訳</CardTitle>
               </CardHeader>
               <CardContent>
-                <EmissionsBySource data={summary?.emissionsBySource || []} />
+                <EmissionsBySource />
               </CardContent>
             </Card>
           </div>
@@ -336,7 +81,7 @@ export default function DashboardPage() {
                 <CardDescription>Scope別・カテゴリ別の排出量</CardDescription>
               </CardHeader>
               <CardContent>
-                <EmissionsOverview data={summary?.scopeData || { scope1: 0, scope2: 0, scope3: 0 }} />
+                <EmissionsOverview />
               </CardContent>
             </Card>
             <Card className="col-span-3">
@@ -345,37 +90,7 @@ export default function DashboardPage() {
                 <CardDescription>直近のデータ登録・承認状況</CardDescription>
               </CardHeader>
               <CardContent>
-                <RecentActivity data={summary?.recentActivities || []} />
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-        <TabsContent value="admin" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle>システム管理</CardTitle>
-                <CardDescription>システム管理機能へのリンク</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <a href="/admin/error-logs">
-                    <AlertCircle className="mr-2 h-4 w-4" />
-                    エラーログ
-                  </a>
-                </Button>
-                <Button variant="outline" className="w-full justify-start" asChild>
-                  <a
-                    href="/api/setup/create-tables"
-                    onClick={(e) => {
-                      e.preventDefault()
-                      createDatabaseTables()
-                    }}
-                  >
-                    <Database className="mr-2 h-4 w-4" />
-                    データベーステーブル作成
-                  </a>
-                </Button>
+                <RecentActivity />
               </CardContent>
             </Card>
           </div>

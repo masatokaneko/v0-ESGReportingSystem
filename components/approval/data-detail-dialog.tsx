@@ -23,28 +23,15 @@ interface DataItem {
   status: "pending" | "approved" | "rejected"
   submitter: string
   submittedAt: string
-  notes?: string
-  approvedBy?: string
-  approvedAt?: string
 }
 
 interface DataDetailDialogProps {
   isOpen: boolean
   setIsOpen: (open: boolean) => void
   data: DataItem | null
-  onApprove?: (id: string) => void
-  onReject?: (id: string, reason: string) => void
-  showActions?: boolean
 }
 
-export function DataDetailDialog({
-  isOpen,
-  setIsOpen,
-  data,
-  onApprove,
-  onReject,
-  showActions = false,
-}: DataDetailDialogProps) {
+export function DataDetailDialog({ isOpen, setIsOpen, data }: DataDetailDialogProps) {
   if (!data) return null
 
   return (
@@ -66,11 +53,11 @@ export function DataDetailDialog({
             </div>
             <div>
               <div className="text-sm font-medium mb-1">拠点</div>
-              <div className="text-sm">{data.location || "未設定"}</div>
+              <div className="text-sm">{data.location}</div>
             </div>
             <div>
               <div className="text-sm font-medium mb-1">部門</div>
-              <div className="text-sm">{data.department || "未設定"}</div>
+              <div className="text-sm">{data.department}</div>
             </div>
             <div>
               <div className="text-sm font-medium mb-1">活動種類</div>
@@ -80,18 +67,6 @@ export function DataDetailDialog({
               <div className="text-sm font-medium mb-1">登録者</div>
               <div className="text-sm">{data.submitter}</div>
             </div>
-            {data.status === "approved" && data.approvedBy && (
-              <div>
-                <div className="text-sm font-medium mb-1">承認者</div>
-                <div className="text-sm">{data.approvedBy}</div>
-              </div>
-            )}
-            {data.status === "approved" && data.approvedAt && (
-              <div>
-                <div className="text-sm font-medium mb-1">承認日時</div>
-                <div className="text-sm">{data.approvedAt}</div>
-              </div>
-            )}
           </div>
 
           <div className="rounded-md bg-muted p-4">
@@ -113,13 +88,6 @@ export function DataDetailDialog({
             <div className="mt-2 text-xs text-muted-foreground">活動量 × 原単位 = 排出量</div>
           </div>
 
-          {data.notes && (
-            <div>
-              <div className="text-sm font-medium mb-1">備考</div>
-              <div className="text-sm whitespace-pre-wrap rounded-md border p-3">{data.notes}</div>
-            </div>
-          )}
-
           <div>
             <div className="text-sm font-medium mb-2">添付ファイル</div>
             <div className="flex items-center space-x-2 rounded-md border p-3">
@@ -135,16 +103,7 @@ export function DataDetailDialog({
           </div>
         </div>
         <DialogFooter>
-          {showActions && data.status === "pending" && onApprove && onReject ? (
-            <div className="flex w-full justify-between">
-              <Button variant="destructive" onClick={() => onReject(data.id, "")}>
-                差戻し
-              </Button>
-              <Button onClick={() => onApprove(data.id)}>承認</Button>
-            </div>
-          ) : (
-            <Button onClick={() => setIsOpen(false)}>閉じる</Button>
-          )}
+          <Button onClick={() => setIsOpen(false)}>閉じる</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

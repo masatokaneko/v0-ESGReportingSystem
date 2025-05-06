@@ -1,17 +1,8 @@
-"use client"
-
-import { useState } from "react"
-import { DataSearchFilters, type SearchFilters } from "@/components/data-search/data-search-filters"
+import { DataSearchFilters } from "@/components/data-search/data-search-filters"
 import { DataSearchTable } from "@/components/data-search/data-search-table"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default function DataSearchPage() {
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({})
-
-  const handleSearch = (filters: SearchFilters) => {
-    setSearchFilters(filters)
-  }
-
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between">
@@ -23,7 +14,7 @@ export default function DataSearchPage() {
           <CardDescription>登録済みのESGデータを様々な条件で検索・参照できます。</CardDescription>
         </CardHeader>
         <CardContent>
-          <DataSearchFilters onSearch={handleSearch} />
+          <DataSearchFilters />
           <div className="mt-6">
             <DataSearchTable />
           </div>

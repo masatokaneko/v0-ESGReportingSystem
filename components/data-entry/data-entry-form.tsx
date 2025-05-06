@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
@@ -19,55 +19,31 @@ import { toast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { FileUploader } from "./file-uploader"
 
-interface Location {
-  id: number
-  code: string
-  name: string
-}
-
-interface Department {
-  id: number
-  code: string
-  name: string
-}
-
-interface EmissionFactor {
-  id: number
-  activity_type: string
-  category: string
-  factor: number
-  unit: string
-}
-
 const formSchema = z.object({
-  entry_date: z.date({
+  date: z.date({
     required_error: "日付を選択してください。",
   }),
-  location_id: z.string({
+  location: z.string({
     required_error: "拠点を選択してください。",
   }),
-  department_id: z.string({
+  department: z.string({
     required_error: "部門を選択してください。",
   }),
-  activity_type: z.string({
+  activityType: z.string({
     required_error: "活動種類を選択してください。",
   }),
-  activity_amount: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
+  activityAmount: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, {
     message: "活動量は0より大きい数値を入力してください。",
   }),
-  emission_factor_id: z.string().optional(),
+  emissionFactor: z.string().refine((val) => !isNaN(Number(val)) && Number(val) >= 0, {
+    message: "原単位は0以上の数値を入力してください。",
+  }),
   notes: z.string().optional(),
 })
 
 export function DataEntryForm() {
   const [calculatedEmission, setCalculatedEmission] = useState<number | null>(null)
   const [files, setFiles] = useState<File[]>([])
-  const [locations, setLocations] = useState<Location[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [emissionFactors, setEmissionFactors] = useState<EmissionFactor[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [selectedEmissionFactor, setSelectedEmissionFactor] = useState<EmissionFactor | null>(null)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -76,146 +52,33 @@ export function DataEntryForm() {
     },
   })
 
-  // マスタデータの取得
-  useEffect(() => {
-    const fetchMasterData = async () => {
-      try {
-        // 拠点データの取得
-        const locationsResponse = await fetch("/api/locations")
-        if (!locationsResponse.ok) {
-          throw new Error("Failed to fetch locations")
-        }
-        const locationsData = await locationsResponse.json()
-        setLocations(locationsData)
-
-        // 部門データの取得
-        const departmentsResponse = await fetch("/api/departments")
-        if (!departmentsResponse.ok) {
-          throw new Error("Failed to fetch departments")
-        }
-        const departmentsData = await departmentsResponse.json()
-        setDepartments(departmentsData)
-
-        // 排出係数データの取得
-        const emissionFactorsResponse = await fetch("/api/emission-factors")
-        if (!emissionFactorsResponse.ok) {
-          throw new Error("Failed to fetch emission factors")
-        }
-        const emissionFactorsData = await emissionFactorsResponse.json()
-        setEmissionFactors(emissionFactorsData)
-      } catch (error) {
-        console.error("Error fetching master data:", error)
-        toast({
-          title: "エラー",
-          description: "マスタデータの取得に失敗しました。",
-          variant: "destructive",
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchMasterData()
-  }, [])
-
-  const watchActivityAmount = form.watch("activity_amount")
-  const watchEmissionFactorId = form.watch("emission_factor_id")
-
-  // 排出係数が選択されたときの処理
-  useEffect(() => {
-    if (watchEmissionFactorId) {
-      const factor = emissionFactors.find((f) => f.id.toString() === watchEmissionFactorId)
-      if (factor) {
-        setSelectedEmissionFactor(factor)
-      }
-    } else {
-      setSelectedEmissionFactor(null)
-    }
-  }, [watchEmissionFactorId, emissionFactors])
+  const watchActivityAmount = form.watch("activityAmount")
+  const watchEmissionFactor = form.watch("emissionFactor")
 
   // 活動量と原単位が変更されたときに排出量を計算
-  useEffect(() => {
-    const calculateEmission = () => {
-      const activityAmount = Number(watchActivityAmount)
+  const calculateEmission = () => {
+    const activityAmount = Number(watchActivityAmount)
+    const emissionFactor = Number(watchEmissionFactor)
 
-      if (!isNaN(activityAmount) && selectedEmissionFactor) {
-        setCalculatedEmission(activityAmount * selectedEmissionFactor.factor)
-      } else {
-        setCalculatedEmission(null)
-      }
-    }
-
-    if (watchActivityAmount && selectedEmissionFactor) {
-      calculateEmission()
-    }
-  }, [watchActivityAmount, selectedEmissionFactor])
-
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    setIsSubmitting(true)
-
-    try {
-      // 排出量の計算
-      const emission = calculatedEmission
-
-      // データエントリの登録
-      const response = await fetch("/api/data-entries", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          entry_date: format(values.entry_date, "yyyy-MM-dd"),
-          location_id: Number.parseInt(values.location_id),
-          department_id: Number.parseInt(values.department_id),
-          activity_type: values.activity_type,
-          activity_amount: Number.parseFloat(values.activity_amount),
-          emission_factor_id: values.emission_factor_id ? Number.parseInt(values.emission_factor_id) : null,
-          emission: emission,
-          notes: values.notes,
-          submitter: "現在のユーザー", // 実際の実装ではログインユーザー情報を使用
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to submit data entry")
-      }
-
-      // フォームのリセット
-      form.reset({
-        entry_date: new Date(),
-        location_id: "",
-        department_id: "",
-        activity_type: "",
-        activity_amount: "",
-        emission_factor_id: "",
-        notes: "",
-      })
-      setFiles([])
+    if (!isNaN(activityAmount) && !isNaN(emissionFactor)) {
+      setCalculatedEmission(activityAmount * emissionFactor)
+    } else {
       setCalculatedEmission(null)
-
-      toast({
-        title: "データが登録されました",
-        description: "入力されたESGデータが正常に登録されました。",
-      })
-    } catch (error) {
-      console.error("Error submitting data entry:", error)
-      toast({
-        title: "エラー",
-        description: error instanceof Error ? error.message : "データの登録に失敗しました。",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSubmitting(false)
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    )
+  // 活動量または原単位が変更されたときに排出量を計算
+  if (watchActivityAmount && watchEmissionFactor) {
+    calculateEmission()
+  }
+
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    // サーバーにデータを送信する処理をここに実装
+    toast({
+      title: "データが登録されました",
+      description: "入力されたESGデータが正常に登録されました。",
+    })
+    console.log(values, files)
   }
 
   return (
@@ -224,7 +87,7 @@ export function DataEntryForm() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <FormField
             control={form.control}
-            name="entry_date"
+            name="date"
             render={({ field }) => (
               <FormItem className="flex flex-col">
                 <FormLabel>日付</FormLabel>
@@ -257,7 +120,7 @@ export function DataEntryForm() {
 
           <FormField
             control={form.control}
-            name="location_id"
+            name="location"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>拠点</FormLabel>
@@ -268,11 +131,11 @@ export function DataEntryForm() {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {locations.map((location) => (
-                      <SelectItem key={location.id} value={location.id.toString()}>
-                        {location.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="tokyo">東京本社</SelectItem>
+                    <SelectItem value="osaka">大阪支社</SelectItem>
+                    <SelectItem value="nagoya">名古屋支社</SelectItem>
+                    <SelectItem value="fukuoka">福岡支社</SelectItem>
+                    <SelectItem value="sapporo">札幌支社</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -282,7 +145,7 @@ export function DataEntryForm() {
 
           <FormField
             control={form.control}
-            name="department_id"
+            name="department"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>部門</FormLabel>
@@ -293,11 +156,11 @@ export function DataEntryForm() {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {departments.map((department) => (
-                      <SelectItem key={department.id} value={department.id.toString()}>
-                        {department.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="admin">総務部</SelectItem>
+                    <SelectItem value="sales">営業部</SelectItem>
+                    <SelectItem value="production">製造部</SelectItem>
+                    <SelectItem value="rd">研究開発部</SelectItem>
+                    <SelectItem value="it">情報システム部</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -307,7 +170,7 @@ export function DataEntryForm() {
 
           <FormField
             control={form.control}
-            name="activity_type"
+            name="activityType"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>活動種類</FormLabel>
@@ -318,11 +181,11 @@ export function DataEntryForm() {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {Array.from(new Set(emissionFactors.map((factor) => factor.activity_type))).map((activityType) => (
-                      <SelectItem key={activityType} value={activityType}>
-                        {activityType}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="electricity">電力使用量</SelectItem>
+                    <SelectItem value="gas">ガス使用量</SelectItem>
+                    <SelectItem value="fuel">燃料消費量</SelectItem>
+                    <SelectItem value="water">水使用量</SelectItem>
+                    <SelectItem value="waste">廃棄物排出量</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -332,12 +195,21 @@ export function DataEntryForm() {
 
           <FormField
             control={form.control}
-            name="activity_amount"
+            name="activityAmount"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>活動量</FormLabel>
                 <FormControl>
-                  <Input type="text" inputMode="decimal" placeholder="例: 1000" {...field} />
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="例: 1000"
+                    {...field}
+                    onChange={(e) => {
+                      field.onChange(e)
+                      calculateEmission()
+                    }}
+                  />
                 </FormControl>
                 <FormDescription>活動の量を数値で入力してください (kWh, m³, L など)</FormDescription>
                 <FormMessage />
@@ -347,34 +219,23 @@ export function DataEntryForm() {
 
           <FormField
             control={form.control}
-            name="emission_factor_id"
+            name="emissionFactor"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>原単位 (排出係数)</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="排出係数を選択" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {emissionFactors
-                      .filter(
-                        (factor) =>
-                          !form.getValues("activity_type") || factor.activity_type === form.getValues("activity_type"),
-                      )
-                      .map((factor) => (
-                        <SelectItem key={factor.id} value={factor.id.toString()}>
-                          {factor.activity_type} - {factor.factor} {factor.unit}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-                <FormDescription>
-                  {selectedEmissionFactor
-                    ? `${selectedEmissionFactor.factor} ${selectedEmissionFactor.unit} (${selectedEmissionFactor.category})`
-                    : "活動量あたりの排出係数を選択してください"}
-                </FormDescription>
+                <FormControl>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="例: 0.5"
+                    {...field}
+                    onChange={(e) => {
+                      field.onChange(e)
+                      calculateEmission()
+                    }}
+                  />
+                </FormControl>
+                <FormDescription>活動量あたりの排出係数を入力してください (kg-CO2/kWh など)</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -413,19 +274,10 @@ export function DataEntryForm() {
         </div>
 
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => form.reset()}>
+          <Button type="button" variant="outline">
             キャンセル
           </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                登録中...
-              </>
-            ) : (
-              "登録する"
-            )}
-          </Button>
+          <Button type="submit">登録する</Button>
         </div>
       </form>
     </Form>
