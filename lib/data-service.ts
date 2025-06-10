@@ -1,14 +1,3 @@
-import {
-  mockESGDataEntries,
-  mockEmissionOverviewData,
-  mockEmissionTrendData,
-  mockEmissionBySourceData,
-  mockRecentActivities,
-  mockDashboardSummary,
-  mockLocations,
-  mockEmissionFactors,
-  generateMockESGData
-} from "./mock-data"
 import type {
   ESGDataEntry,
   EmissionOverviewData,
@@ -29,98 +18,141 @@ export async function getESGDataEntries(filters?: {
   startDate?: string
   endDate?: string
 }): Promise<ESGDataEntry[]> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 100))
+  const searchParams = new URLSearchParams()
   
-  let data = [...mockESGDataEntries]
+  if (filters?.location) searchParams.set('location', filters.location)
+  if (filters?.department) searchParams.set('department', filters.department)
+  if (filters?.status) searchParams.set('status', filters.status)
+  if (filters?.startDate) searchParams.set('startDate', filters.startDate)
+  if (filters?.endDate) searchParams.set('endDate', filters.endDate)
   
-  if (filters) {
-    if (filters.location) {
-      data = data.filter(entry => entry.location === filters.location)
-    }
-    if (filters.department) {
-      data = data.filter(entry => entry.department === filters.department)
-    }
-    if (filters.status) {
-      data = data.filter(entry => entry.status === filters.status)
-    }
-    if (filters.startDate) {
-      data = data.filter(entry => entry.date >= filters.startDate)
-    }
-    if (filters.endDate) {
-      data = data.filter(entry => entry.date <= filters.endDate)
-    }
+  const url = `/api/esg-entries?${searchParams.toString()}`
+  const response = await fetch(url)
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch ESG entries')
   }
   
-  return data
+  return response.json()
 }
 
 export async function getESGDataEntry(id: string): Promise<ESGDataEntry | null> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockESGDataEntries.find(entry => entry.id === id) || null
+  const response = await fetch(`/api/esg-entries/${id}`)
+  
+  if (!response.ok) {
+    if (response.status === 404) return null
+    throw new Error('Failed to fetch ESG entry')
+  }
+  
+  return response.json()
 }
 
 export async function updateESGDataStatus(
   id: string,
-  status: ESGStatus
+  status: ESGStatus,
+  approvedBy?: string
 ): Promise<ESGDataEntry | null> {
-  await new Promise(resolve => setTimeout(resolve, 200))
-  const entry = mockESGDataEntries.find(e => e.id === id)
-  if (entry) {
-    entry.status = status
-    return entry
+  const response = await fetch(`/api/esg-entries/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status, approvedBy }),
+  })
+  
+  if (!response.ok) {
+    if (response.status === 404) return null
+    throw new Error('Failed to update ESG entry status')
   }
-  return null
+  
+  return response.json()
 }
 
 // Dashboard Services
 export async function getDashboardSummary(): Promise<DashboardSummary> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockDashboardSummary
+  const response = await fetch('/api/dashboard')
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch dashboard summary')
+  }
+  
+  return response.json()
 }
 
 export async function getEmissionOverviewData(): Promise<EmissionOverviewData[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockEmissionOverviewData
+  const dashboard = await getDashboardSummary()
+  
+  // ダッシュボードデータから概要データを構築
+  return [
+    { 
+      name: "Scope 1", 
+      electricity: 0, 
+      gas: dashboard.totalScope1 * 0.6, 
+      fuel: dashboard.totalScope1 * 0.4, 
+      water: 0, 
+      waste: 0 
+    },
+    { 
+      name: "Scope 2", 
+      electricity: dashboard.totalScope2, 
+      gas: 0, 
+      fuel: 0, 
+      water: 0, 
+      waste: 0 
+    },
+    { 
+      name: "Scope 3", 
+      electricity: 0, 
+      gas: 0, 
+      fuel: 0, 
+      water: dashboard.totalScope3 * 0.7, 
+      waste: dashboard.totalScope3 * 0.3 
+    },
+  ]
 }
 
 export async function getEmissionTrendData(): Promise<EmissionTrendData[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockEmissionTrendData
+  const dashboard = await getDashboardSummary()
+  return dashboard.trendData
 }
 
 export async function getEmissionBySourceData(): Promise<EmissionBySourceData[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockEmissionBySourceData
+  const dashboard = await getDashboardSummary()
+  return dashboard.sourceData
 }
 
 export async function getRecentActivities(): Promise<Activity[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockRecentActivities
+  const dashboard = await getDashboardSummary()
+  return dashboard.recentActivities
 }
 
 // Settings Services
 export async function getLocations(): Promise<Location[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockLocations
+  const response = await fetch('/api/locations')
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch locations')
+  }
+  
+  return response.json()
 }
 
 export async function getEmissionFactors(): Promise<EmissionFactor[]> {
-  await new Promise(resolve => setTimeout(resolve, 100))
-  return mockEmissionFactors
+  const response = await fetch('/api/emission-factors')
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch emission factors')
+  }
+  
+  return response.json()
 }
 
 export async function updateEmissionFactor(
   id: string,
   updates: Partial<EmissionFactor>
 ): Promise<EmissionFactor | null> {
-  await new Promise(resolve => setTimeout(resolve, 200))
-  const factor = mockEmissionFactors.find(f => f.id === id)
-  if (factor) {
-    Object.assign(factor, updates)
-    return factor
-  }
-  return null
+  // TODO: Implement API endpoint for updating emission factors
+  throw new Error('Update emission factor not implemented yet')
 }
 
 // Report Generation Service
@@ -153,15 +185,17 @@ export async function generateReport(config: {
 
 // Data Entry Service
 export async function submitESGData(data: Omit<ESGDataEntry, "id" | "emission" | "submittedAt">): Promise<ESGDataEntry> {
-  await new Promise(resolve => setTimeout(resolve, 500))
+  const response = await fetch('/api/esg-entries', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  })
   
-  const newEntry: ESGDataEntry = {
-    ...data,
-    id: `entry-${Date.now()}`,
-    emission: data.activityAmount * data.emissionFactor,
-    submittedAt: new Date().toISOString()
+  if (!response.ok) {
+    throw new Error('Failed to submit ESG data')
   }
   
-  mockESGDataEntries.push(newEntry)
-  return newEntry
+  return response.json()
 }
