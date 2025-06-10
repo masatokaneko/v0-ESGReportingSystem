@@ -1,135 +1,188 @@
-import { sql } from '@vercel/postgres'
+import { createServerSupabaseClient } from '@/lib/supabase'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
+    const supabase = createServerSupabaseClient()
+
     // 総排出量の計算
-    const totalEmissions = await sql`
-      SELECT 
-        COALESCE(SUM(emission), 0) as total,
-        COUNT(*) as entries
-      FROM esg_entries
-      WHERE status = 'approved'
-    `
+    const { data: totalData, error: totalError } = await supabase
+      .from('esg_entries')
+      .select('emission')
+      .eq('status', 'approved')
+
+    if (totalError) throw totalError
+
+    const totalEmissions = totalData?.reduce((sum, entry) => sum + entry.emission, 0) || 0
+    const entriesCount = totalData?.length || 0
 
     // 今月と先月の比較
-    const currentMonth = new Date().getMonth() + 1
-    const currentYear = new Date().getFullYear()
+    const currentDate = new Date()
+    const currentMonth = currentDate.getMonth() + 1
+    const currentYear = currentDate.getFullYear()
     const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1
     const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear
 
-    const monthlyComparison = await sql`
-      SELECT 
-        EXTRACT(MONTH FROM date) as month,
-        EXTRACT(YEAR FROM date) as year,
-        SUM(emission) as total_emission
-      FROM esg_entries
-      WHERE status = 'approved'
-        AND (
-          (EXTRACT(MONTH FROM date) = ${currentMonth} AND EXTRACT(YEAR FROM date) = ${currentYear})
-          OR
-          (EXTRACT(MONTH FROM date) = ${lastMonth} AND EXTRACT(YEAR FROM date) = ${lastMonthYear})
-        )
-      GROUP BY EXTRACT(MONTH FROM date), EXTRACT(YEAR FROM date)
-      ORDER BY year, month
-    `
+    const currentMonthStart = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-01`
+    const lastMonthStart = `${lastMonthYear}-${lastMonth.toString().padStart(2, '0')}-01`
+    const lastMonthEnd = new Date(lastMonthYear, lastMonth, 0).toISOString().split('T')[0]
 
-    // スコープ別排出量（簡易版）
-    const scopeEmissions = await sql`
-      SELECT 
-        activity_type,
-        SUM(emission) as total_emission
-      FROM esg_entries
-      WHERE status = 'approved'
-      GROUP BY activity_type
-    `
+    const { data: currentMonthData } = await supabase
+      .from('esg_entries')
+      .select('emission')
+      .eq('status', 'approved')
+      .gte('date', currentMonthStart)
+
+    const { data: lastMonthData } = await supabase
+      .from('esg_entries')
+      .select('emission')
+      .eq('status', 'approved')
+      .gte('date', lastMonthStart)
+      .lte('date', lastMonthEnd)
+
+    const currentMonthTotal = currentMonthData?.reduce((sum, entry) => sum + entry.emission, 0) || 0
+    const lastMonthTotal = lastMonthData?.reduce((sum, entry) => sum + entry.emission, 0) || 0
+
+    // スコープ別排出量
+    const { data: scopeData, error: scopeError } = await supabase
+      .from('esg_entries')
+      .select('activity_type, emission')
+      .eq('status', 'approved')
+
+    if (scopeError) throw scopeError
+
+    const scopeEmissions = scopeData?.reduce((acc, entry) => {
+      if (!acc[entry.activity_type]) {
+        acc[entry.activity_type] = 0
+      }
+      acc[entry.activity_type] += entry.emission
+      return acc
+    }, {} as Record<string, number>) || {}
 
     // 承認待ちの件数
-    const pendingApprovals = await sql`
-      SELECT COUNT(*) as count
-      FROM esg_entries
-      WHERE status = 'pending'
-    `
+    const { count: pendingCount, error: pendingError } = await supabase
+      .from('esg_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending')
+
+    if (pendingError) throw pendingError
 
     // 最近のアクティビティ
-    const recentActivities = await sql`
-      SELECT 
-        submitter as name,
-        CASE 
-          WHEN status = 'approved' THEN location || 'の' || activity_type || 'データを承認しました'
-          WHEN status = 'pending' THEN location || 'の' || activity_type || 'データを登録しました'
-          ELSE location || 'の' || activity_type || 'データを更新しました'
-        END as action,
-        CASE
-          WHEN created_at >= NOW() - INTERVAL '1 hour' THEN EXTRACT(EPOCH FROM (NOW() - created_at))/60 || '分前'
-          WHEN created_at >= NOW() - INTERVAL '1 day' THEN EXTRACT(EPOCH FROM (NOW() - created_at))/3600 || '時間前'
-          ELSE TO_CHAR(created_at, 'MM/DD')
-        END as date
-      FROM esg_entries
-      ORDER BY created_at DESC
-      LIMIT 5
-    `
+    const { data: recentData, error: recentError } = await supabase
+      .from('esg_entries')
+      .select('submitter, location, activity_type, status, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    if (recentError) throw recentError
+
+    const recentActivities = recentData?.map(entry => {
+      const timeDiff = Date.now() - new Date(entry.created_at).getTime()
+      const hours = Math.floor(timeDiff / (1000 * 60 * 60))
+      const minutes = Math.floor(timeDiff / (1000 * 60))
+      
+      let timeString
+      if (minutes < 60) {
+        timeString = `${minutes}分前`
+      } else if (hours < 24) {
+        timeString = `${hours}時間前`
+      } else {
+        const date = new Date(entry.created_at)
+        timeString = `${date.getMonth() + 1}/${date.getDate()}`
+      }
+
+      const activityMap: Record<string, string> = {
+        electricity: '電力',
+        gas: 'ガス',
+        fuel: '燃料',
+        water: '水',
+        waste: '廃棄物'
+      }
+
+      const actionText = entry.status === 'approved' 
+        ? `${entry.location}の${activityMap[entry.activity_type] || entry.activity_type}データを承認しました`
+        : `${entry.location}の${activityMap[entry.activity_type] || entry.activity_type}データを登録しました`
+
+      return {
+        name: entry.submitter,
+        action: actionText,
+        date: timeString
+      }
+    }) || []
 
     // 月別トレンドデータ（過去6ヶ月）
-    const trendData = await sql`
-      SELECT 
-        TO_CHAR(date, 'MM月') as name,
-        SUM(CASE WHEN activity_type IN ('electricity', 'gas', 'fuel') THEN emission ELSE 0 END) as "Scope 1",
-        SUM(CASE WHEN activity_type = 'electricity' THEN emission ELSE 0 END) as "Scope 2",
-        SUM(CASE WHEN activity_type IN ('water', 'waste') THEN emission ELSE 0 END) as "Scope 3"
-      FROM esg_entries
-      WHERE status = 'approved'
-        AND date >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '6 months')
-      GROUP BY DATE_TRUNC('month', date)
-      ORDER BY DATE_TRUNC('month', date)
-    `
+    const sixMonthsAgo = new Date()
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
+    const sixMonthsAgoString = sixMonthsAgo.toISOString().split('T')[0]
+
+    const { data: trendData, error: trendError } = await supabase
+      .from('esg_entries')
+      .select('date, activity_type, emission')
+      .eq('status', 'approved')
+      .gte('date', sixMonthsAgoString)
+
+    if (trendError) throw trendError
+
+    // 月別集計
+    const monthlyData: Record<string, { scope1: number, scope2: number, scope3: number }> = {}
+    
+    trendData?.forEach(entry => {
+      const date = new Date(entry.date)
+      const monthKey = `${date.getMonth() + 1}月`
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { scope1: 0, scope2: 0, scope3: 0 }
+      }
+      
+      if (['gas', 'fuel'].includes(entry.activity_type)) {
+        monthlyData[monthKey].scope1 += entry.emission
+      } else if (entry.activity_type === 'electricity') {
+        monthlyData[monthKey].scope2 += entry.emission
+      } else if (['water', 'waste'].includes(entry.activity_type)) {
+        monthlyData[monthKey].scope3 += entry.emission
+      }
+    })
+
+    const trendDataArray = Object.entries(monthlyData).map(([name, data]) => ({
+      name,
+      "Scope 1": Number(data.scope1.toFixed(2)),
+      "Scope 2": Number(data.scope2.toFixed(2)),
+      "Scope 3": Number(data.scope3.toFixed(2))
+    }))
 
     // ソース別排出量
-    const sourceData = await sql`
-      SELECT 
-        CASE activity_type
-          WHEN 'electricity' THEN '電力'
-          WHEN 'gas' THEN 'ガス'
-          WHEN 'fuel' THEN '燃料'
-          WHEN 'water' THEN '水'
-          WHEN 'waste' THEN '廃棄物'
-          ELSE activity_type
-        END as name,
-        SUM(emission) as value,
-        CASE activity_type
-          WHEN 'electricity' THEN 'hsl(12, 76%, 61%)'
-          WHEN 'gas' THEN 'hsl(173, 58%, 39%)'
-          WHEN 'fuel' THEN 'hsl(197, 37%, 24%)'
-          WHEN 'water' THEN 'hsl(43, 74%, 66%)'
-          WHEN 'waste' THEN 'hsl(27, 87%, 67%)'
-          ELSE 'hsl(0, 0%, 50%)'
-        END as color
-      FROM esg_entries
-      WHERE status = 'approved'
-      GROUP BY activity_type
-      ORDER BY value DESC
-    `
+    const activityTypeMap: Record<string, { name: string, color: string }> = {
+      electricity: { name: '電力', color: 'hsl(12, 76%, 61%)' },
+      gas: { name: 'ガス', color: 'hsl(173, 58%, 39%)' },
+      fuel: { name: '燃料', color: 'hsl(197, 37%, 24%)' },
+      water: { name: '水', color: 'hsl(43, 74%, 66%)' },
+      waste: { name: '廃棄物', color: 'hsl(27, 87%, 67%)' }
+    }
+
+    const sourceData = Object.entries(scopeEmissions)
+      .map(([activityType, value]) => ({
+        name: activityTypeMap[activityType]?.name || activityType,
+        value: Number(value.toFixed(2)),
+        color: activityTypeMap[activityType]?.color || 'hsl(0, 0%, 50%)'
+      }))
+      .sort((a, b) => b.value - a.value)
 
     // 変化率の計算
     let changeFromLastMonth = 0
-    if (monthlyComparison.rows.length >= 2) {
-      const current = monthlyComparison.rows[1]?.total_emission || 0
-      const previous = monthlyComparison.rows[0]?.total_emission || 0
-      if (previous > 0) {
-        changeFromLastMonth = ((current - previous) / previous) * 100
-      }
+    if (lastMonthTotal > 0) {
+      changeFromLastMonth = Number((((currentMonthTotal - lastMonthTotal) / lastMonthTotal) * 100).toFixed(1))
     }
 
     const dashboard = {
-      totalEmissions: Number(totalEmissions.rows[0].total) || 0,
-      totalScope1: Number(scopeEmissions.rows.find(s => ['gas', 'fuel'].includes(s.activity_type))?.total_emission || 0),
-      totalScope2: Number(scopeEmissions.rows.find(s => s.activity_type === 'electricity')?.total_emission || 0),
-      totalScope3: Number(scopeEmissions.rows.find(s => ['water', 'waste'].includes(s.activity_type))?.total_emission || 0),
-      changeFromLastMonth: Number(changeFromLastMonth.toFixed(1)),
-      pendingApprovals: Number(pendingApprovals.rows[0].count),
-      recentActivities: recentActivities.rows,
-      trendData: trendData.rows,
-      sourceData: sourceData.rows
+      totalEmissions: Number(totalEmissions.toFixed(2)),
+      totalScope1: Number((scopeEmissions.gas || 0) + (scopeEmissions.fuel || 0)).toFixed(2),
+      totalScope2: Number(scopeEmissions.electricity || 0).toFixed(2),
+      totalScope3: Number((scopeEmissions.water || 0) + (scopeEmissions.waste || 0)).toFixed(2),
+      changeFromLastMonth,
+      pendingApprovals: pendingCount || 0,
+      recentActivities,
+      trendData: trendDataArray,
+      sourceData
     }
 
     return NextResponse.json(dashboard)

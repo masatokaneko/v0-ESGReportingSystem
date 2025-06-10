@@ -1,31 +1,31 @@
--- ESGレポーティングシステム データベーススキーマ
--- Vercel Postgres用
+-- ESGレポーティングシステム Supabaseスキーマ
+-- Supabase Dashboard の SQL Editor で実行してください
 
 -- 拠点マスタテーブル
 CREATE TABLE IF NOT EXISTS locations (
-  id SERIAL PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   code TEXT UNIQUE NOT NULL,
   address TEXT,
   type TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
 -- 排出係数マスタテーブル
 CREATE TABLE IF NOT EXISTS emission_factors (
-  id SERIAL PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   activity_type TEXT NOT NULL,
   category TEXT NOT NULL,
   factor DECIMAL(10, 6) NOT NULL,
   unit TEXT NOT NULL,
   valid_from DATE DEFAULT CURRENT_DATE,
   valid_to DATE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
 -- ESGデータエントリテーブル
 CREATE TABLE IF NOT EXISTS esg_entries (
-  id SERIAL PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   date DATE NOT NULL,
   location TEXT NOT NULL,
   department TEXT NOT NULL,
@@ -35,12 +35,12 @@ CREATE TABLE IF NOT EXISTS esg_entries (
   emission DECIMAL(10, 4) NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',
   submitter TEXT NOT NULL,
-  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  submitted_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
   approved_by TEXT,
-  approved_at TIMESTAMP,
+  approved_at TIMESTAMP WITH TIME ZONE,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
 -- インデックス作成
@@ -48,6 +48,53 @@ CREATE INDEX IF NOT EXISTS idx_esg_entries_date ON esg_entries(date);
 CREATE INDEX IF NOT EXISTS idx_esg_entries_location ON esg_entries(location);
 CREATE INDEX IF NOT EXISTS idx_esg_entries_status ON esg_entries(status);
 CREATE INDEX IF NOT EXISTS idx_esg_entries_activity_type ON esg_entries(activity_type);
+
+-- Row Level Security (RLS) を有効化
+ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE emission_factors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE esg_entries ENABLE ROW LEVEL SECURITY;
+
+-- デモ用のポリシー（全員アクセス可能）
+-- 本番環境では認証に基づいたポリシーに変更してください
+
+-- locations テーブルのポリシー
+CREATE POLICY "Enable read access for all users" ON locations
+  FOR SELECT USING (true);
+
+CREATE POLICY "Enable insert for all users" ON locations
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Enable update for all users" ON locations
+  FOR UPDATE USING (true);
+
+CREATE POLICY "Enable delete for all users" ON locations
+  FOR DELETE USING (true);
+
+-- emission_factors テーブルのポリシー
+CREATE POLICY "Enable read access for all users" ON emission_factors
+  FOR SELECT USING (true);
+
+CREATE POLICY "Enable insert for all users" ON emission_factors
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Enable update for all users" ON emission_factors
+  FOR UPDATE USING (true);
+
+CREATE POLICY "Enable delete for all users" ON emission_factors
+  FOR DELETE USING (true);
+
+-- esg_entries テーブルのポリシー
+CREATE POLICY "Enable read access for all users" ON esg_entries
+  FOR SELECT USING (true);
+
+CREATE POLICY "Enable insert for all users" ON esg_entries
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Enable update for all users" ON esg_entries
+  FOR UPDATE USING (true);
+
+CREATE POLICY "Enable delete for all users" ON esg_entries
+  FOR DELETE USING (true);
 
 -- 初期データ投入
 
