@@ -1,16 +1,45 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts"
-
-const data = [
-  { name: "電力", value: 5678, color: "#002B5B" },
-  { name: "ガス", value: 2345, color: "#0059B8" },
-  { name: "ガソリン", value: 1111, color: "#0077CC" },
-  { name: "軽油", value: 890, color: "#0095DD" },
-  { name: "その他", value: 2321, color: "#00B3EE" },
-]
+import { getDashboardSummary } from "@/lib/data-service"
 
 export function EmissionsBySource() {
+  const [data, setData] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchSourceData = async () => {
+      try {
+        const dashboardData = await getDashboardSummary()
+        setData(dashboardData.sourceData || [])
+      } catch (error) {
+        console.error('Failed to fetch source data:', error)
+        setData([])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchSourceData()
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[300px]">
+        <div className="text-muted-foreground">データを読み込み中...</div>
+      </div>
+    )
+  }
+
+  if (data.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[300px]">
+        <div className="text-muted-foreground">データが見つかりません</div>
+      </div>
+    )
+  }
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <PieChart>
@@ -28,7 +57,7 @@ export function EmissionsBySource() {
             <Cell key={`cell-${index}`} fill={entry.color} />
           ))}
         </Pie>
-        <Tooltip formatter={(value) => [`${value} t-CO2`, ""]} labelFormatter={(label) => `${label}`} />
+        <Tooltip formatter={(value) => [`${Number(value).toLocaleString()} kg-CO₂`, ""]} labelFormatter={(label) => `${label}`} />
         <Legend />
       </PieChart>
     </ResponsiveContainer>

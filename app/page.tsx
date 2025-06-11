@@ -1,11 +1,45 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmissionsOverview } from "@/components/dashboard/emissions-overview"
 import { EmissionsBySource } from "@/components/dashboard/emissions-by-source"
 import { EmissionsTrend } from "@/components/dashboard/emissions-trend"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
+import { getDashboardSummary } from "@/lib/data-service"
 
 export default function DashboardPage() {
+  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        const data = await getDashboardSummary()
+        setDashboardData(data)
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchDashboardData()
+  }, [])
+
+  const formatEmission = (value: number) => {
+    return value.toLocaleString('ja-JP', { maximumFractionDigits: 2 })
+  }
+
+  const getChangeColor = (change: number) => {
+    return change > 0 ? 'text-red-600' : change < 0 ? 'text-green-600' : 'text-muted-foreground'
+  }
+
+  const getChangePrefix = (change: number) => {
+    return change > 0 ? '+' : ''
+  }
+
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
       <div className="flex items-center justify-between">
@@ -24,8 +58,12 @@ export default function DashboardPage() {
                 <CardTitle className="text-sm font-medium">総GHG排出量</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">12,345 t-CO2</div>
-                <p className="text-xs text-muted-foreground">前年比 +2.5%</p>
+                <div className="text-2xl font-bold">
+                  {isLoading ? '読み込み中...' : `${formatEmission(dashboardData?.totalEmissions || 0)} kg-CO₂`}
+                </div>
+                <p className={`text-xs ${getChangeColor(dashboardData?.changeFromLastMonth || 0)}`}>
+                  前月比 {getChangePrefix(dashboardData?.changeFromLastMonth || 0)}{Math.abs(dashboardData?.changeFromLastMonth || 0)}%
+                </p>
               </CardContent>
             </Card>
             <Card>
@@ -33,8 +71,10 @@ export default function DashboardPage() {
                 <CardTitle className="text-sm font-medium">Scope 1排出量</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">3,456 t-CO2</div>
-                <p className="text-xs text-muted-foreground">前年比 -1.2%</p>
+                <div className="text-2xl font-bold">
+                  {isLoading ? '読み込み中...' : `${formatEmission(dashboardData?.totalScope1 || 0)} kg-CO₂`}
+                </div>
+                <p className="text-xs text-muted-foreground">直接排出（燃料・ガス）</p>
               </CardContent>
             </Card>
             <Card>
@@ -42,17 +82,21 @@ export default function DashboardPage() {
                 <CardTitle className="text-sm font-medium">Scope 2排出量</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">5,678 t-CO2</div>
-                <p className="text-xs text-muted-foreground">前年比 +4.3%</p>
+                <div className="text-2xl font-bold">
+                  {isLoading ? '読み込み中...' : `${formatEmission(dashboardData?.totalScope2 || 0)} kg-CO₂`}
+                </div>
+                <p className="text-xs text-muted-foreground">間接排出（電力）</p>
               </CardContent>
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">再エネ比率</CardTitle>
+                <CardTitle className="text-sm font-medium">Scope 3排出量</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">23.5%</div>
-                <p className="text-xs text-muted-foreground">前年比 +5.2%</p>
+                <div className="text-2xl font-bold">
+                  {isLoading ? '読み込み中...' : `${formatEmission(dashboardData?.totalScope3 || 0)} kg-CO₂`}
+                </div>
+                <p className="text-xs text-muted-foreground">その他の間接排出</p>
               </CardContent>
             </Card>
           </div>

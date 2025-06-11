@@ -1,6 +1,45 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { getDashboardSummary } from "@/lib/data-service"
 
 export function RecentActivity() {
+  const [activities, setActivities] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchActivities = async () => {
+      try {
+        const dashboardData = await getDashboardSummary()
+        setActivities(dashboardData.recentActivities || [])
+      } catch (error) {
+        console.error('Failed to fetch recent activities:', error)
+        setActivities([])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchActivities()
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[300px]">
+        <div className="text-muted-foreground">データを読み込み中...</div>
+      </div>
+    )
+  }
+
+  if (activities.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[300px]">
+        <div className="text-muted-foreground">最近の活動がありません</div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-8">
       {activities.map((activity, index) => (
@@ -19,30 +58,3 @@ export function RecentActivity() {
     </div>
   )
 }
-
-const activities = [
-  {
-    name: "山田太郎",
-    avatar: "/placeholder.svg?key=7cts5",
-    action: "東京本社の電力データを登録しました",
-    date: "2分前",
-  },
-  {
-    name: "佐藤花子",
-    avatar: "/placeholder.svg?key=cleby",
-    action: "大阪支社のガスデータを承認しました",
-    date: "34分前",
-  },
-  {
-    name: "鈴木一郎",
-    avatar: "/placeholder.svg?key=vh9tt",
-    action: "名古屋支社の廃棄物データを登録しました",
-    date: "3時間前",
-  },
-  {
-    name: "田中誠",
-    avatar: "/placeholder.svg?key=f3nyu",
-    action: "福岡支社の社用車データを承認しました",
-    date: "5時間前",
-  },
-]
