@@ -201,6 +201,8 @@ export function DataEntryForm() {
                 <FormLabel>活動量</FormLabel>
                 <FormControl>
                   <Input
+                    id="activity-amount"
+                    name="activityAmount"
                     type="text"
                     inputMode="decimal"
                     placeholder="例: 1000"
@@ -225,6 +227,8 @@ export function DataEntryForm() {
                 <FormLabel>原単位 (排出係数)</FormLabel>
                 <FormControl>
                   <Input
+                    id="emission-factor"
+                    name="emissionFactor"
                     type="text"
                     inputMode="decimal"
                     placeholder="例: 0.5"

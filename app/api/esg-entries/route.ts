@@ -91,6 +91,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(transformedData)
   } catch (error) {
     console.error('ESG entries fetch error:', error)
+    
+    // Supabaseエラーの詳細を返す
+    if (error && typeof error === 'object' && 'message' in error) {
+      return NextResponse.json(
+        { 
+          error: 'Failed to fetch ESG entries',
+          details: error.message,
+          code: 'code' in error ? error.code : undefined
+        },
+        { status: 500 }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Failed to fetch ESG entries' },
       { status: 500 }
@@ -169,6 +182,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Supabaseエラーの詳細を返す
+    if (error && typeof error === 'object' && 'message' in error) {
+      return NextResponse.json(
+        { 
+          error: 'Failed to create ESG entry',
+          details: error.message,
+          code: 'code' in error ? error.code : undefined
+        },
+        { status: 500 }
+      )
+    }
+    
     return NextResponse.json(
       { error: 'Failed to create ESG entry' },
       { status: 500 }

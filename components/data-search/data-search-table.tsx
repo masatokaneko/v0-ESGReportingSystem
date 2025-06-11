@@ -1,137 +1,100 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { FileText, Download } from "lucide-react"
+import { FileText, Download, AlertCircle } from "lucide-react"
 import { DataDetailDialog } from "../approval/data-detail-dialog"
+import { getESGDataEntries } from "@/lib/data-service"
+import { ESGDataEntry } from "@/lib/types"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import type { DataSearchFilters as FiltersType } from "@/app/data-search/page"
+import { ESGStatus } from "@/lib/types"
 
-interface DataItem {
-  id: string
-  date: string
-  location: string
-  department: string
-  activityType: string
-  activityAmount: number
-  emissionFactor: number
-  emission: number
-  status: "pending" | "approved" | "rejected"
-  submitter: string
-  submittedAt: string
+interface DataSearchTableProps {
+  filters?: FiltersType
 }
 
-const initialData: DataItem[] = [
-  {
-    id: "ESG-2023-001",
-    date: "2023-04-01",
-    location: "東京本社",
-    department: "総務部",
-    activityType: "電力使用量",
-    activityAmount: 12500,
-    emissionFactor: 0.423,
-    emission: 5287.5,
-    status: "approved",
-    submitter: "山田太郎",
-    submittedAt: "2023-05-10",
-  },
-  {
-    id: "ESG-2023-002",
-    date: "2023-04-01",
-    location: "大阪支社",
-    department: "営業部",
-    activityType: "ガス使用量",
-    activityAmount: 450,
-    emissionFactor: 2.23,
-    emission: 1003.5,
-    status: "approved",
-    submitter: "佐藤花子",
-    submittedAt: "2023-05-11",
-  },
-  {
-    id: "ESG-2023-003",
-    date: "2023-04-01",
-    location: "名古屋支社",
-    department: "製造部",
-    activityType: "燃料消費量",
-    activityAmount: 320,
-    emissionFactor: 2.58,
-    emission: 825.6,
-    status: "pending",
-    submitter: "鈴木一郎",
-    submittedAt: "2023-05-12",
-  },
-  {
-    id: "ESG-2023-004",
-    date: "2023-04-01",
-    location: "福岡支社",
-    department: "研究開発部",
-    activityType: "水使用量",
-    activityAmount: 780,
-    emissionFactor: 0.23,
-    emission: 179.4,
-    status: "approved",
-    submitter: "田中誠",
-    submittedAt: "2023-05-09",
-  },
-  {
-    id: "ESG-2023-005",
-    date: "2023-04-01",
-    location: "札幌支社",
-    department: "情報システム部",
-    activityType: "廃棄物排出量",
-    activityAmount: 120,
-    emissionFactor: 4.15,
-    emission: 498,
-    status: "rejected",
-    submitter: "高橋健太",
-    submittedAt: "2023-05-08",
-  },
-  {
-    id: "ESG-2023-006",
-    date: "2023-05-01",
-    location: "東京本社",
-    department: "総務部",
-    activityType: "電力使用量",
-    activityAmount: 13200,
-    emissionFactor: 0.423,
-    emission: 5583.6,
-    status: "approved",
-    submitter: "山田太郎",
-    submittedAt: "2023-06-10",
-  },
-  {
-    id: "ESG-2023-007",
-    date: "2023-05-01",
-    location: "大阪支社",
-    department: "営業部",
-    activityType: "ガス使用量",
-    activityAmount: 480,
-    emissionFactor: 2.23,
-    emission: 1070.4,
-    status: "approved",
-    submitter: "佐藤花子",
-    submittedAt: "2023-06-11",
-  },
-  {
-    id: "ESG-2023-008",
-    date: "2023-05-01",
-    location: "名古屋支社",
-    department: "製造部",
-    activityType: "燃料消費量",
-    activityAmount: 350,
-    emissionFactor: 2.58,
-    emission: 903,
-    status: "approved",
-    submitter: "鈴木一郎",
-    submittedAt: "2023-06-12",
-  },
-]
-
-export function DataSearchTable() {
-  const [data] = useState<DataItem[]>(initialData)
-  const [selectedItem, setSelectedItem] = useState<DataItem | null>(null)
+export function DataSearchTable({ filters }: DataSearchTableProps) {
+  const [data, setData] = useState<ESGDataEntry[]>([])
+  const [selectedItem, setSelectedItem] = useState<ESGDataEntry | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  // マウント時の処理
+  useEffect(() => {
+    setMounted(true)
+    console.log('[DataSearchTable] Component mounted')
+    console.log('[DataSearchTable] Initial data fetch starting...')
+    
+    // 初回データ取得
+    fetchData()
+    
+    return () => {
+      console.log('[DataSearchTable] Component unmounted')
+    }
+  }, [])
+
+  // フィルター変更時の処理
+  useEffect(() => {
+    if (mounted) {
+      console.log('Filters changed:', filters)
+      fetchData()
+    }
+  }, [filters, mounted])
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      
+      console.log('Fetching ESG data with filters:', filters)
+      
+      // フィルターの準備
+      const apiFilters: Parameters<typeof getESGDataEntries>[0] = {}
+      
+      if (filters?.location) apiFilters.location = filters.location
+      if (filters?.department) apiFilters.department = filters.department
+      if (filters?.startDate) apiFilters.startDate = filters.startDate.toISOString().split('T')[0]
+      if (filters?.endDate) apiFilters.endDate = filters.endDate.toISOString().split('T')[0]
+      
+      console.log('API filters:', apiFilters)
+      
+      const entries = await getESGDataEntries(apiFilters)
+      console.log('Received entries:', entries)
+      
+      // キーワード検索とアクティビティタイプのフィルタリング（クライアントサイド）
+      let filteredEntries = entries
+      
+      if (filters?.keyword) {
+        const keyword = filters.keyword.toLowerCase()
+        filteredEntries = filteredEntries.filter(entry => 
+          entry.id.toLowerCase().includes(keyword) ||
+          entry.location.toLowerCase().includes(keyword) ||
+          entry.department.toLowerCase().includes(keyword) ||
+          entry.activityType.toLowerCase().includes(keyword) ||
+          entry.submitter.toLowerCase().includes(keyword) ||
+          (entry.notes && entry.notes.toLowerCase().includes(keyword))
+        )
+      }
+      
+      if (filters?.activityType) {
+        filteredEntries = filteredEntries.filter(entry => 
+          entry.activityType === filters.activityType
+        )
+      }
+      
+      setData(filteredEntries)
+    } catch (err) {
+      console.error('Failed to fetch ESG data:', err)
+      setError('データの取得に失敗しました。再度お試しください。')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -158,8 +121,39 @@ export function DataSearchTable() {
     }
   }
 
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="text-muted-foreground">データを読み込み中...</div>
+      </div>
+    )
+  }
+
   return (
     <>
+      <div className="mb-4 flex justify-between items-center">
+        <Button 
+          onClick={() => {
+            console.log('Manual fetch button clicked')
+            fetchData()
+          }}
+          variant="outline"
+        >
+          データを手動で取得
+        </Button>
+        <div className="text-sm text-muted-foreground">
+          {isLoading ? "読み込み中..." : `${data.length}件のデータ`}
+        </div>
+      </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -177,38 +171,46 @@ export function DataSearchTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell className="font-medium">{item.id}</TableCell>
-                <TableCell>{item.date}</TableCell>
-                <TableCell>{item.location}</TableCell>
-                <TableCell>{item.department}</TableCell>
-                <TableCell>{item.activityType}</TableCell>
-                <TableCell className="text-right">{item.activityAmount.toLocaleString()}</TableCell>
-                <TableCell className="text-right">{item.emissionFactor}</TableCell>
-                <TableCell className="text-right">{item.emission.toLocaleString()}</TableCell>
-                <TableCell>{getStatusBadge(item.status)}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        setSelectedItem(item)
-                        setIsDetailOpen(true)
-                      }}
-                    >
-                      <FileText className="h-4 w-4" />
-                      <span className="sr-only">詳細</span>
-                    </Button>
-                    <Button variant="ghost" size="icon">
-                      <Download className="h-4 w-4" />
-                      <span className="sr-only">ダウンロード</span>
-                    </Button>
-                  </div>
+            {data.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={10} className="text-center text-muted-foreground">
+                  データが見つかりませんでした
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              data.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell className="font-medium">{item.id}</TableCell>
+                  <TableCell>{item.date}</TableCell>
+                  <TableCell>{item.location}</TableCell>
+                  <TableCell>{item.department}</TableCell>
+                  <TableCell>{item.activityType}</TableCell>
+                  <TableCell className="text-right">{item.activityAmount.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{item.emissionFactor}</TableCell>
+                  <TableCell className="text-right">{item.emission.toLocaleString()}</TableCell>
+                  <TableCell>{getStatusBadge(item.status)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setSelectedItem(item)
+                          setIsDetailOpen(true)
+                        }}
+                      >
+                        <FileText className="h-4 w-4" />
+                        <span className="sr-only">詳細</span>
+                      </Button>
+                      <Button variant="ghost" size="icon">
+                        <Download className="h-4 w-4" />
+                        <span className="sr-only">ダウンロード</span>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </div>
