@@ -110,28 +110,27 @@ export async function GET() {
       }
     }) || []
 
-    // 月別トレンドデータ（過去6ヶ月）
-    const sixMonthsAgo = new Date()
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-    const sixMonthsAgoString = sixMonthsAgo.toISOString().split('T')[0]
-
+    // 月別トレンドデータ（過去12ヶ月のデータを取得）
     const { data: trendData, error: trendError } = await supabase
       .from('esg_entries')
       .select('date, activity_type, emission')
       .eq('status', 'approved')
-      .gte('date', sixMonthsAgoString)
+      .gte('date', '2024-01-01')  // 2024年から全てのデータを取得
+      .order('date', { ascending: true })
 
     if (trendError) throw trendError
 
-    // 月別集計
-    const monthlyData: Record<string, { scope1: number, scope2: number, scope3: number }> = {}
+    // 月別集計（年月をキーとして使用）
+    const monthlyData: Record<string, { scope1: number, scope2: number, scope3: number, year: number, month: number }> = {}
     
     trendData?.forEach(entry => {
       const date = new Date(entry.date)
-      const monthKey = `${date.getMonth() + 1}月`
+      const year = date.getFullYear()
+      const month = date.getMonth() + 1
+      const monthKey = `${year}-${month.toString().padStart(2, '0')}`
       
       if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { scope1: 0, scope2: 0, scope3: 0 }
+        monthlyData[monthKey] = { scope1: 0, scope2: 0, scope3: 0, year, month }
       }
       
       if (['gas', 'fuel'].includes(entry.activity_type)) {
@@ -143,12 +142,15 @@ export async function GET() {
       }
     })
 
-    const trendDataArray = Object.entries(monthlyData).map(([name, data]) => ({
-      name,
-      "Scope 1": Number(data.scope1.toFixed(2)),
-      "Scope 2": Number(data.scope2.toFixed(2)),
-      "Scope 3": Number(data.scope3.toFixed(2))
-    }))
+    // 月別データを時系列順に並べて、表示用の名前に変換
+    const trendDataArray = Object.entries(monthlyData)
+      .sort(([a], [b]) => a.localeCompare(b))  // 年月順でソート
+      .map(([key, data]) => ({
+        name: `${data.year}年${data.month}月`,
+        "Scope 1": Number(data.scope1.toFixed(2)),
+        "Scope 2": Number(data.scope2.toFixed(2)),
+        "Scope 3": Number(data.scope3.toFixed(2))
+      }))
 
     // ソース別排出量
     const activityTypeMap: Record<string, { name: string, color: string }> = {
