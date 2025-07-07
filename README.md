@@ -17,7 +17,7 @@
 
 - **フロントエンド**: Next.js 15.2.4, React 19, TypeScript
 - **スタイリング**: Tailwind CSS, shadcn/ui (Radix UI)
-- **データベース**: Supabase (PostgreSQL)
+- **データベース**: Neon (PostgreSQL)
 - **状態管理**: React Hook Form, Zod
 - **グラフ**: Recharts
 - **デプロイ**: Vercel
@@ -28,24 +28,35 @@
 
 - Node.js 18以上
 - npm または pnpm
-- Supabaseアカウント
+- Neonアカウント
+- Neon CLI (オプション)
 
-### 1. Supabaseプロジェクトの作成
+### 1. Neonプロジェクトの作成
 
-1. [Supabase](https://supabase.com)でアカウントを作成
+1. [Neon](https://neon.tech)でアカウントを作成
 2. 新しいプロジェクトを作成
-3. プロジェクトの設定画面から以下の情報を取得：
-   - Project URL
-   - anon public key
-   - service_role key
+3. プロジェクトの設定画面から接続文字列を取得
 
 ### 2. データベースのセットアップ
 
-Supabase DashboardのSQL Editorで以下のファイルを実行：
+#### Neon CLIを使用する場合：
 
-```sql
--- lib/supabase-schema.sql の内容をSQL Editorで実行
+```bash
+# Neon CLIのインストール
+brew install neonctl
+
+# ログイン
+neonctl auth
+
+# スキーマの適用
+neonctl sql -f neon-schema.sql --project-id [PROJECT_ID]
 ```
+
+#### Neonコンソールを使用する場合：
+
+1. Neonコンソールにログイン
+2. SQL Editorを開く
+3. `neon-schema.sql`の内容を実行
 
 ### 3. 環境変数の設定
 
@@ -59,9 +70,7 @@ cp .env.example .env.local
 `.env.local`を編集して実際の値を設定：
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://[YOUR-PROJECT-ID].supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgresql://[user]:[password]@[host].neon.tech:5432/[database]?sslmode=require
 ```
 
 ### 4. 依存関係のインストールと起動
@@ -82,9 +91,7 @@ http://localhost:3000 でアプリケーションにアクセスできます。
 
 1. GitHubリポジトリをVercelに接続
 2. 環境変数を設定：
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `DATABASE_URL`
 3. デプロイを実行
 
 ```bash
@@ -139,7 +146,8 @@ npm start
 │   └── reports/      # レポート生成
 ├── components/       # UIコンポーネント
 ├── lib/              # ユーティリティ、型定義、データサービス
-│   ├── supabase.ts   # Supabaseクライアント
+│   ├── neon.ts       # Neonデータベースクライアント
+│   ├── database.schema.ts # Drizzle ORMスキーマ
 │   ├── types.ts      # TypeScript型定義
 │   └── data-service.ts # データアクセス層
 ├── public/           # 静的ファイル
@@ -150,9 +158,9 @@ npm start
 
 ### データベース接続エラー
 
-- Supabaseの環境変数が正しく設定されているか確認
-- Supabaseプロジェクトが稼働しているか確認
-- RLS（Row Level Security）ポリシーが適切に設定されているか確認
+- DATABASE_URLが正しく設定されているか確認
+- 接続文字列に`?sslmode=require`が含まれているか確認
+- Neonプロジェクトがアクティブか確認
 
 ### ビルドエラー
 

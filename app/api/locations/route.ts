@@ -1,35 +1,29 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { db } from '@/lib/neon'
+import { locations } from '@/lib/database.schema'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
-    const supabase = createServerSupabaseClient()
-    
-    const { data, error } = await supabase
-      .from('locations')
-      .select(`
-        id,
-        name,
-        code,
-        address,
-        type,
-        created_at
-      `)
-      .order('name')
+    const data = await db
+      .select({
+        id: locations.id,
+        name: locations.name,
+        region: locations.region,
+        country: locations.country,
+        createdAt: locations.createdAt
+      })
+      .from(locations)
+      .orderBy(locations.name)
 
-    if (error) {
-      throw error
-    }
-
-    // カラム名をキャメルケースに変換
-    const transformedData = data?.map(item => ({
+    // データを期待される形式に変換（既存のAPIとの互換性のため）
+    const transformedData = data.map(item => ({
       id: item.id,
       name: item.name,
-      code: item.code,
-      address: item.address,
-      type: item.type,
-      createdAt: item.created_at
-    })) || []
+      code: `${item.country}-${item.region}`, // regionとcountryからcodeを生成
+      address: `${item.region}, ${item.country}`, // regionとcountryからaddressを生成
+      type: 'office', // デフォルト値
+      createdAt: item.createdAt
+    }))
 
     return NextResponse.json(transformedData)
   } catch (error) {

@@ -1,6 +1,8 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { db } from '@/lib/neon'
+import { esgEntries, locations } from '@/lib/database.schema'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { eq, gte, lte, and, desc, sql } from 'drizzle-orm'
 
 const ESGEntrySchema = z.object({
   date: z.string(),
@@ -15,7 +17,6 @@ const ESGEntrySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
     const { searchParams } = new URL(request.url)
     const location = searchParams.get('location')
     const department = searchParams.get('department')
@@ -23,82 +24,90 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    let query = supabase
-      .from('esg_entries')
-      .select(`
-        id,
-        date,
-        location,
-        department,
-        activity_type,
-        activity_amount,
-        emission_factor,
-        emission,
-        status,
-        submitter,
-        submitted_at,
-        approved_by,
-        approved_at,
-        notes,
-        created_at
-      `)
+    const conditions = []
 
     if (location) {
-      query = query.eq('location', location)
+      // location名でlocation idを検索
+      const locationData = await db
+        .select({ id: locations.id })
+        .from(locations)
+        .where(eq(locations.name, location))
+        .limit(1)
+      
+      if (locationData.length > 0) {
+        conditions.push(eq(esgEntries.locationId, locationData[0].id))
+      }
     }
 
     if (department) {
-      query = query.eq('department', department)
+      conditions.push(sql`${esgEntries.metadata}->>'department' = ${department}`)
     }
 
     if (status) {
-      query = query.eq('status', status)
+      conditions.push(sql`${esgEntries.metadata}->>'status' = ${status}`)
     }
 
     if (startDate) {
-      query = query.gte('date', startDate)
+      conditions.push(gte(esgEntries.date, new Date(startDate)))
     }
 
     if (endDate) {
-      query = query.lte('date', endDate)
+      conditions.push(lte(esgEntries.date, new Date(endDate)))
     }
 
-    const { data, error } = await query.order('date', { ascending: false }).order('created_at', { ascending: false })
-    
-    if (error) {
-      throw error
-    }
+    const data = await db
+      .select({
+        id: esgEntries.id,
+        date: esgEntries.date,
+        locationId: esgEntries.locationId,
+        type: esgEntries.type,
+        category: esgEntries.category,
+        subcategory: esgEntries.subcategory,
+        value: esgEntries.value,
+        unit: esgEntries.unit,
+        emissionFactorId: esgEntries.emissionFactorId,
+        calculatedEmissions: esgEntries.calculatedEmissions,
+        metadata: esgEntries.metadata,
+        createdAt: esgEntries.createdAt,
+        updatedAt: esgEntries.updatedAt,
+        locationName: locations.name
+      })
+      .from(esgEntries)
+      .leftJoin(locations, eq(esgEntries.locationId, locations.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(esgEntries.date), desc(esgEntries.createdAt))
 
-    // カラム名をキャメルケースに変換
-    const transformedData = data?.map(item => ({
-      id: item.id,
-      date: item.date,
-      location: item.location,
-      department: item.department,
-      activityType: item.activity_type,
-      activityAmount: item.activity_amount,
-      emissionFactor: item.emission_factor,
-      emission: item.emission,
-      status: item.status,
-      submitter: item.submitter,
-      submittedAt: item.submitted_at,
-      approvedBy: item.approved_by,
-      approvedAt: item.approved_at,
-      notes: item.notes,
-      createdAt: item.created_at
-    })) || []
+    // データを期待される形式に変換
+    const transformedData = data.map(item => {
+      const metadata = item.metadata as any || {}
+      return {
+        id: item.id,
+        date: item.date,
+        location: item.locationName || '',
+        department: metadata.department || '',
+        activityType: item.subcategory,
+        activityAmount: Number(item.value),
+        emissionFactor: metadata.emissionFactor || 0,
+        emission: Number(item.calculatedEmissions || 0),
+        status: metadata.status || 'pending',
+        submitter: metadata.submitter || '',
+        submittedAt: metadata.submittedAt || item.createdAt,
+        approvedBy: metadata.approvedBy || null,
+        approvedAt: metadata.approvedAt || null,
+        notes: metadata.notes || '',
+        createdAt: item.createdAt
+      }
+    })
     
     return NextResponse.json(transformedData)
   } catch (error) {
     console.error('ESG entries fetch error:', error)
     
-    // Supabaseエラーの詳細を返す
     if (error && typeof error === 'object' && 'message' in error) {
       return NextResponse.json(
         { 
           error: 'Failed to fetch ESG entries',
-          details: error.message,
-          code: 'code' in error ? error.code : undefined
+          details: error.message
         },
         { status: 500 }
       )
@@ -113,62 +122,71 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient()
     const body = await request.json()
     const validatedData = ESGEntrySchema.parse(body)
 
-    const emission = validatedData.activityAmount * validatedData.emissionFactor
+    // location名からlocation idを取得
+    const locationData = await db
+      .select({ id: locations.id })
+      .from(locations)
+      .where(eq(locations.name, validatedData.location))
+      .limit(1)
 
-    const { data, error } = await supabase
-      .from('esg_entries')
-      .insert({
-        date: validatedData.date,
-        location: validatedData.location,
-        department: validatedData.department,
-        activity_type: validatedData.activityType,
-        activity_amount: validatedData.activityAmount,
-        emission_factor: validatedData.emissionFactor,
-        emission,
-        status: 'pending',
-        submitter: validatedData.submitter,
-        notes: validatedData.notes || null
-      })
-      .select(`
-        id,
-        date,
-        location,
-        department,
-        activity_type,
-        activity_amount,
-        emission_factor,
-        emission,
-        status,
-        submitter,
-        submitted_at,
-        notes,
-        created_at
-      `)
-      .single()
+    if (locationData.length === 0) {
+      // locationが存在しない場合は新規作成
+      const newLocation = await db
+        .insert(locations)
+        .values({
+          name: validatedData.location,
+          region: 'Unknown',
+          country: 'Unknown'
+        })
+        .returning({ id: locations.id })
 
-    if (error) {
-      throw error
+      locationData.push(newLocation[0])
     }
 
-    // カラム名をキャメルケースに変換
+    const emission = validatedData.activityAmount * validatedData.emissionFactor
+
+    const metadata = {
+      department: validatedData.department,
+      status: 'pending',
+      submitter: validatedData.submitter,
+      submittedAt: new Date().toISOString(),
+      emissionFactor: validatedData.emissionFactor,
+      notes: validatedData.notes || ''
+    }
+
+    const [data] = await db
+      .insert(esgEntries)
+      .values({
+        date: new Date(validatedData.date),
+        locationId: locationData[0].id,
+        type: 'emission',
+        category: 'scope1',
+        subcategory: validatedData.activityType,
+        value: validatedData.activityAmount.toString(),
+        unit: 'unit',
+        calculatedEmissions: emission.toString(),
+        metadata
+      })
+      .returning()
+
+    // 作成したデータを期待される形式に変換
     const transformedData = {
       id: data.id,
       date: data.date,
-      location: data.location,
-      department: data.department,
-      activityType: data.activity_type,
-      activityAmount: data.activity_amount,
-      emissionFactor: data.emission_factor,
-      emission: data.emission,
-      status: data.status,
-      submitter: data.submitter,
-      submittedAt: data.submitted_at,
-      notes: data.notes,
-      createdAt: data.created_at
+      location: validatedData.location,
+      department: validatedData.department,
+      activityType: data.subcategory,
+      activityAmount: Number(data.value),
+      emissionFactor: validatedData.emissionFactor,
+      emission: Number(data.calculatedEmissions || 0),
+      status: 'pending',
+      submitter: validatedData.submitter,
+      submittedAt: metadata.submittedAt,
+      notes: validatedData.notes || '',
+      createdAt: data.createdAt
     }
 
     return NextResponse.json(transformedData, { status: 201 })
@@ -182,13 +200,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Supabaseエラーの詳細を返す
     if (error && typeof error === 'object' && 'message' in error) {
       return NextResponse.json(
         { 
           error: 'Failed to create ESG entry',
-          details: error.message,
-          code: 'code' in error ? error.code : undefined
+          details: error.message
         },
         { status: 500 }
       )

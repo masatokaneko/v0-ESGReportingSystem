@@ -1,6 +1,8 @@
-import { createServerSupabaseClient } from '@/lib/supabase'
+import { db } from '@/lib/neon'
+import { esgEntries, locations } from '@/lib/database.schema'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { eq, sql } from 'drizzle-orm'
 
 const UpdateStatusSchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected']),
@@ -12,7 +14,6 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createServerSupabaseClient()
     const id = parseInt(params.id)
     
     if (isNaN(id)) {
@@ -22,55 +23,55 @@ export async function GET(
       )
     }
 
-    const { data, error } = await supabase
-      .from('esg_entries')
-      .select(`
-        id,
-        date,
-        location,
-        department,
-        activity_type,
-        activity_amount,
-        emission_factor,
-        emission,
-        status,
-        submitter,
-        submitted_at,
-        approved_by,
-        approved_at,
-        notes,
-        created_at
-      `)
-      .eq('id', id)
-      .single()
+    const data = await db
+      .select({
+        id: esgEntries.id,
+        date: esgEntries.date,
+        locationId: esgEntries.locationId,
+        type: esgEntries.type,
+        category: esgEntries.category,
+        subcategory: esgEntries.subcategory,
+        value: esgEntries.value,
+        unit: esgEntries.unit,
+        emissionFactorId: esgEntries.emissionFactorId,
+        calculatedEmissions: esgEntries.calculatedEmissions,
+        metadata: esgEntries.metadata,
+        createdAt: esgEntries.createdAt,
+        updatedAt: esgEntries.updatedAt,
+        locationName: locations.name
+      })
+      .from(esgEntries)
+      .leftJoin(locations, eq(esgEntries.locationId, locations.id))
+      .where(eq(esgEntries.id, id))
+      .limit(1)
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json(
-          { error: 'ESG entry not found' },
-          { status: 404 }
-        )
-      }
-      throw error
+    if (data.length === 0) {
+      return NextResponse.json(
+        { error: 'ESG entry not found' },
+        { status: 404 }
+      )
     }
 
-    // カラム名をキャメルケースに変換
+    const item = data[0]
+    const metadata = item.metadata as any || {}
+
+    // データを期待される形式に変換
     const transformedData = {
-      id: data.id,
-      date: data.date,
-      location: data.location,
-      department: data.department,
-      activityType: data.activity_type,
-      activityAmount: data.activity_amount,
-      emissionFactor: data.emission_factor,
-      emission: data.emission,
-      status: data.status,
-      submitter: data.submitter,
-      submittedAt: data.submitted_at,
-      approvedBy: data.approved_by,
-      approvedAt: data.approved_at,
-      notes: data.notes,
-      createdAt: data.created_at
+      id: item.id,
+      date: item.date,
+      location: item.locationName || '',
+      department: metadata.department || '',
+      activityType: item.subcategory,
+      activityAmount: Number(item.value),
+      emissionFactor: metadata.emissionFactor || 0,
+      emission: Number(item.calculatedEmissions || 0),
+      status: metadata.status || 'pending',
+      submitter: metadata.submitter || '',
+      submittedAt: metadata.submittedAt || item.createdAt,
+      approvedBy: metadata.approvedBy || null,
+      approvedAt: metadata.approvedAt || null,
+      notes: metadata.notes || '',
+      createdAt: item.createdAt
     }
 
     return NextResponse.json(transformedData)
@@ -88,7 +89,6 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createServerSupabaseClient()
     const id = parseInt(params.id)
     
     if (isNaN(id)) {
@@ -101,69 +101,71 @@ export async function PATCH(
     const body = await request.json()
     const validatedData = UpdateStatusSchema.parse(body)
 
-    let updateData: any = {
-      status: validatedData.status,
-      updated_at: new Date().toISOString()
+    // 既存のデータを取得
+    const existingData = await db
+      .select({ metadata: esgEntries.metadata })
+      .from(esgEntries)
+      .where(eq(esgEntries.id, id))
+      .limit(1)
+
+    if (existingData.length === 0) {
+      return NextResponse.json(
+        { error: 'ESG entry not found' },
+        { status: 404 }
+      )
+    }
+
+    const currentMetadata = existingData[0].metadata as any || {}
+    const updatedMetadata = {
+      ...currentMetadata,
+      status: validatedData.status
     }
 
     if (validatedData.status === 'approved' && validatedData.approvedBy) {
-      updateData.approved_by = validatedData.approvedBy
-      updateData.approved_at = new Date().toISOString()
+      updatedMetadata.approvedBy = validatedData.approvedBy
+      updatedMetadata.approvedAt = new Date().toISOString()
     } else if (validatedData.status === 'pending') {
-      updateData.approved_by = null
-      updateData.approved_at = null
+      delete updatedMetadata.approvedBy
+      delete updatedMetadata.approvedAt
     }
 
-    const { data, error } = await supabase
-      .from('esg_entries')
-      .update(updateData)
-      .eq('id', id)
-      .select(`
-        id,
-        date,
-        location,
-        department,
-        activity_type,
-        activity_amount,
-        emission_factor,
-        emission,
-        status,
-        submitter,
-        submitted_at,
-        approved_by,
-        approved_at,
-        notes,
-        created_at
-      `)
-      .single()
+    const [updatedEntry] = await db
+      .update(esgEntries)
+      .set({
+        metadata: updatedMetadata,
+        updatedAt: new Date()
+      })
+      .where(eq(esgEntries.id, id))
+      .returning()
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json(
-          { error: 'ESG entry not found' },
-          { status: 404 }
-        )
-      }
-      throw error
-    }
+    // locationを結合して取得
+    const data = await db
+      .select({
+        locationName: locations.name
+      })
+      .from(locations)
+      .where(eq(locations.id, updatedEntry.locationId))
+      .limit(1)
 
-    // カラム名をキャメルケースに変換
+    const locationName = data[0]?.locationName || ''
+
+    // データを期待される形式に変換
     const transformedData = {
-      id: data.id,
-      date: data.date,
-      location: data.location,
-      department: data.department,
-      activityType: data.activity_type,
-      activityAmount: data.activity_amount,
-      emissionFactor: data.emission_factor,
-      emission: data.emission,
-      status: data.status,
-      submitter: data.submitter,
-      submittedAt: data.submitted_at,
-      approvedBy: data.approved_by,
-      approvedAt: data.approved_at,
-      notes: data.notes,
-      createdAt: data.created_at
+      id: updatedEntry.id,
+      date: updatedEntry.date,
+      location: locationName,
+      department: updatedMetadata.department || '',
+      activityType: updatedEntry.subcategory,
+      activityAmount: Number(updatedEntry.value),
+      emissionFactor: updatedMetadata.emissionFactor || 0,
+      emission: Number(updatedEntry.calculatedEmissions || 0),
+      status: updatedMetadata.status,
+      submitter: updatedMetadata.submitter || '',
+      submittedAt: updatedMetadata.submittedAt || updatedEntry.createdAt,
+      approvedBy: updatedMetadata.approvedBy || null,
+      approvedAt: updatedMetadata.approvedAt || null,
+      notes: updatedMetadata.notes || '',
+      createdAt: updatedEntry.createdAt
     }
 
     return NextResponse.json(transformedData)
@@ -189,7 +191,6 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createServerSupabaseClient()
     const id = parseInt(params.id)
     
     if (isNaN(id)) {
@@ -199,19 +200,16 @@ export async function DELETE(
       )
     }
 
-    const { error } = await supabase
-      .from('esg_entries')
-      .delete()
-      .eq('id', id)
+    const deletedRows = await db
+      .delete(esgEntries)
+      .where(eq(esgEntries.id, id))
+      .returning({ id: esgEntries.id })
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return NextResponse.json(
-          { error: 'ESG entry not found' },
-          { status: 404 }
-        )
-      }
-      throw error
+    if (deletedRows.length === 0) {
+      return NextResponse.json(
+        { error: 'ESG entry not found' },
+        { status: 404 }
+      )
     }
 
     return NextResponse.json({ message: 'ESG entry deleted successfully' })
