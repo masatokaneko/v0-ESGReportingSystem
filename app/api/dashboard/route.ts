@@ -11,7 +11,7 @@ export async function GET() {
         emission: esgEntries.calculatedEmissions
       })
       .from(esgEntries)
-      .where(eq(esgEntries.metadata, sql`${'{"status": "approved"}'}`))
+      .where(sql`${esgEntries.metadata}->>'status' = 'approved'`)
 
     const totalEmissions = totalData?.reduce((sum, entry) => sum + Number(entry.emission || 0), 0) || 0
     const entriesCount = totalData?.length || 0
@@ -34,7 +34,7 @@ export async function GET() {
       .from(esgEntries)
       .where(
         and(
-          eq(esgEntries.metadata, sql`${'{"status": "approved"}'}`),
+          sql`${esgEntries.metadata}->>'status' = 'approved'`,
           gte(esgEntries.date, currentMonthStart)
         )
       )
@@ -46,7 +46,7 @@ export async function GET() {
       .from(esgEntries)
       .where(
         and(
-          eq(esgEntries.metadata, sql`${'{"status": "approved"}'}`),
+          sql`${esgEntries.metadata}->>'status' = 'approved'`,
           gte(esgEntries.date, lastMonthStart),
           lte(esgEntries.date, lastMonthEnd)
         )
@@ -62,7 +62,7 @@ export async function GET() {
         emission: esgEntries.calculatedEmissions
       })
       .from(esgEntries)
-      .where(eq(esgEntries.metadata, sql`${'{"status": "approved"}'}`))
+      .where(sql`${esgEntries.metadata}->>'status' = 'approved'`)
 
     const scopeEmissions = scopeData?.reduce((acc, entry) => {
       if (!acc[entry.activityType]) {
@@ -76,7 +76,7 @@ export async function GET() {
     const pendingData = await db
       .select({ count: sql<number>`count(*)` })
       .from(esgEntries)
-      .where(eq(esgEntries.metadata, sql`${'{"status": "pending"}'}`))
+      .where(sql`${esgEntries.metadata}->>'status' = 'pending'`)
 
     const pendingCount = pendingData[0]?.count || 0
 
@@ -139,7 +139,7 @@ export async function GET() {
       .from(esgEntries)
       .where(
         and(
-          eq(esgEntries.metadata, sql`${'{"status": "approved"}'}`),
+          sql`${esgEntries.metadata}->>'status' = 'approved'`,
           gte(esgEntries.date, new Date('2024-01-01'))
         )
       )
